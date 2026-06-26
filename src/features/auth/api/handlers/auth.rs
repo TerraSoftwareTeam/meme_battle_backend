@@ -3,11 +3,13 @@ use crate::{
         app::state::AuthState, http::dto::RestApiResponse, http::error::AppError,
         security::jwt::AuthBody,
     },
-    features::auth::api::dto::request::{AuthUserDto, RefreshSessionDto, RegisterAuthUserDto},
+    features::auth::api::{
+        dto::request::{AuthUserDto, RefreshSessionDto, RegisterAuthUserDto},
+        handlers::validation::{validate_auth_user, validate_refresh_session, validate_register_auth_user},
+    },
 };
 use axum::extract::State;
 use axum::{response::IntoResponse, Json};
-use validator::Validate;
 
 /// this function creates a router for creating user authentication registration
 /// it will create a new user in the database
@@ -22,9 +24,7 @@ pub async fn create_user_auth(
     State(state): State<AuthState>,
     Json(payload): Json<RegisterAuthUserDto>,
 ) -> Result<impl IntoResponse, AppError> {
-    payload
-        .validate()
-        .map_err(|err| AppError::ValidationError(format!("Invalid input: {}", err)))?;
+    validate_register_auth_user(&payload)?;
 
     state.register_user.execute(payload.into()).await?;
     Ok(RestApiResponse::success(()))
@@ -43,9 +43,7 @@ pub async fn login_user(
     State(state): State<AuthState>,
     Json(payload): Json<AuthUserDto>,
 ) -> Result<impl IntoResponse, AppError> {
-    payload
-        .validate()
-        .map_err(|err| AppError::ValidationError(format!("Invalid input: {}", err)))?;
+    validate_auth_user(&payload)?;
 
     let auth_body = state.login_user.execute(payload.into()).await?;
     Ok(RestApiResponse::success(auth_body))
@@ -73,9 +71,7 @@ pub async fn refresh_session(
     State(state): State<AuthState>,
     Json(payload): Json<RefreshSessionDto>,
 ) -> Result<impl IntoResponse, AppError> {
-    payload
-        .validate()
-        .map_err(|err| AppError::ValidationError(format!("Invalid input: {}", err)))?;
+    validate_refresh_session(&payload)?;
 
     let auth_body = state.refresh_session.execute(payload.into()).await?;
     Ok(RestApiResponse::success(auth_body))
