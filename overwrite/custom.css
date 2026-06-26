@@ -1,0 +1,280 @@
+:root {
+  --docs-page-bg: #eef2f7;
+  --docs-panel: rgba(255, 255, 255, 0.95);
+  --docs-panel-strong: rgba(255, 255, 255, 0.985);
+  --docs-border: rgba(15, 23, 42, 0.08);
+  --docs-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  --docs-shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.05);
+  --docs-text: #1f2937;
+  --docs-text-soft: #4b5563;
+}
+
+html {
+  box-sizing: border-box;
+  overflow-y: scroll;
+  background: var(--docs-page-bg);
+}
+
+*,
+*:before,
+*:after {
+  box-sizing: inherit;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family:
+    "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  color: var(--docs-text);
+  background:
+    linear-gradient(rgba(238, 242, 247, 0.975), rgba(238, 242, 247, 0.985)),
+    url("./anime-docs-bg.jpg") right top / cover no-repeat fixed;
+}
+
+.docs-backdrop {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.18), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(238, 242, 247, 0.16) 100%);
+  z-index: 0;
+}
+
+#swagger-ui {
+  position: relative;
+  z-index: 1;
+  padding: 24px 0 40px;
+}
+
+.swagger-ui .wrapper {
+  max-width: 1220px;
+}
+
+.swagger-ui .topbar,
+.swagger-ui .information-container.wrapper,
+.swagger-ui .scheme-container,
+.swagger-ui .opblock-tag-section,
+.swagger-ui section.models {
+  width: min(1160px, calc(100% - 32px));
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.swagger-ui .topbar {
+  padding: 16px 20px;
+  border: 1px solid var(--docs-border);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: var(--docs-shadow);
+}
+
+.swagger-ui .topbar .wrapper {
+  padding: 0;
+}
+
+.swagger-ui .topbar a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--docs-text);
+  min-height: 52px;
+}
+
+.swagger-ui .topbar a img,
+.swagger-ui .topbar a svg {
+  display: none;
+}
+
+.swagger-ui .topbar a::before {
+  content: "";
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  background: url("./swagger-avatar.jpeg") center center / cover no-repeat;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+}
+
+.swagger-ui .topbar .download-url-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.swagger-ui .topbar .download-url-wrapper .select-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--docs-text);
+  font-weight: 700;
+}
+
+.swagger-ui .topbar .download-url-wrapper .select-label span {
+  color: var(--docs-text);
+  opacity: 1;
+}
+
+.swagger-ui .topbar .download-url-wrapper select,
+.swagger-ui .topbar .download-url-wrapper input[type="text"] {
+  min-height: 40px;
+  border-radius: 12px;
+  border-color: rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--docs-text);
+  font-weight: 600;
+}
+
+.swagger-ui .topbar .download-url-wrapper select {
+  min-width: 220px;
+}
+
+.swagger-ui .topbar .download-url-wrapper input[type="text"] {
+  min-width: 240px;
+}
+
+.swagger-ui .topbar .download-url-wrapper .download-url-button,
+.swagger-ui .btn.authorize,
+.swagger-ui .btn.execute {
+  border-radius: 12px;
+}
+
+.swagger-ui .topbar .download-url-wrapper option {
+  color: var(--docs-text);
+  background: #ffffff;
+}
+
+.swagger-ui .information-container.wrapper,
+.swagger-ui .scheme-container,
+.swagger-ui section.models {
+  padding: 24px 28px;
+  border: 1px solid var(--docs-border);
+  border-radius: 24px;
+  background: var(--docs-panel-strong);
+  box-shadow: var(--docs-shadow-soft);
+}
+
+.swagger-ui .opblock-tag-section {
+  padding: 24px 28px;
+  border: 1px solid var(--docs-border);
+  border-radius: 24px;
+  background: var(--docs-panel-strong);
+  box-shadow: var(--docs-shadow-soft);
+  margin-bottom: 20px;
+}
+
+.swagger-ui .scheme-container {
+  margin-top: 18px;
+  margin-bottom: 18px;
+}
+
+.swagger-ui .info {
+  margin: 0;
+}
+
+.swagger-ui .info .title {
+  color: var(--docs-text);
+}
+
+.swagger-ui .info p,
+.swagger-ui .info li,
+.swagger-ui .info a,
+.swagger-ui .response-col_description,
+.swagger-ui .parameter__name,
+.swagger-ui .parameter__type,
+.swagger-ui .model,
+.swagger-ui .model-title {
+  color: var(--docs-text-soft);
+}
+
+.swagger-ui .opblock-tag {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.swagger-ui .opblock {
+  margin-bottom: 16px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+.swagger-ui .opblock:last-child {
+  margin-bottom: 0;
+}
+
+.swagger-ui input,
+.swagger-ui select,
+.swagger-ui textarea {
+  border-radius: 10px;
+}
+
+.swagger-ui textarea {
+  min-height: 140px;
+}
+
+.swagger-ui .model-box,
+.swagger-ui .responses-inner {
+  border-radius: 14px;
+}
+
+.swagger-ui .opblock-body,
+.swagger-ui .opblock-section-header,
+.swagger-ui .opblock-section-request-body,
+.swagger-ui .responses-wrapper,
+.swagger-ui .response-col_links,
+.swagger-ui .highlight-code,
+.swagger-ui .microlight,
+.swagger-ui .model-box,
+.swagger-ui .responses-inner {
+  background: #ffffff;
+}
+
+.swagger-ui .microlight,
+.swagger-ui .highlight-code {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.swagger-ui .copy-to-clipboard {
+  border-radius: 10px;
+}
+
+@media (max-width: 900px) {
+  body {
+    background:
+      linear-gradient(rgba(238, 242, 247, 0.98), rgba(238, 242, 247, 0.99)),
+      url("./anime-docs-bg.jpg") center top / cover no-repeat fixed;
+  }
+
+  .swagger-ui .topbar,
+  .swagger-ui .information-container.wrapper,
+  .swagger-ui .scheme-container,
+  .swagger-ui .opblock-tag-section,
+  .swagger-ui section.models {
+    width: min(100% - 18px, 1160px);
+  }
+
+  .swagger-ui .topbar,
+  .swagger-ui .information-container.wrapper,
+  .swagger-ui .scheme-container,
+  .swagger-ui .opblock-tag-section,
+  .swagger-ui section.models {
+    padding: 18px 16px;
+    border-radius: 18px;
+  }
+
+  .swagger-ui .topbar .download-url-wrapper {
+    justify-content: flex-start;
+  }
+
+  .swagger-ui .topbar .download-url-wrapper select,
+  .swagger-ui .topbar .download-url-wrapper input[type="text"] {
+    min-width: 0;
+    width: 100%;
+  }
+}

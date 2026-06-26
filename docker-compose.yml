@@ -1,0 +1,70 @@
+name: meme_battle_backend
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/terrasoftwareteam/meme_battle_backend/app:${APP_IMAGE_TAG:-latest}
+    container_name: meme_battle_backend-app
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,sqlx=info,tower_http=info,axum::rejection=trace}
+      POSTGRES_USER: ${POSTGRES_USER:-testuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
+      POSTGRES_DB: ${POSTGRES_DB:-testdb}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_MAX_CONNECTIONS: ${DATABASE_MAX_CONNECTIONS:-5}
+      DATABASE_MIN_CONNECTIONS: ${DATABASE_MIN_CONNECTIONS:-1}
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8080
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318/v1/traces}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-local-env-jwt-secret-32-bytes}
+      ARGON2_SECRET_KEY: ${ARGON2_SECRET_KEY:-change-me-in-local-env-argon2-secret-32}
+      HMAC_SECRET_KEY: ${HMAC_SECRET_KEY:-change-me-in-local-env-hmac-secret-32}
+      HACKCLUB_CDN_API_KEY: ${HACKCLUB_CDN_API_KEY}
+      HACKCLUB_CDN_BASE_URL: ${HACKCLUB_CDN_BASE_URL:-https://cdn.hackclub.com}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_EXTERNAL_PORT:-8080}:8080"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: meme_battle_backend-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-testuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
+      POSTGRES_DB: ${POSTGRES_DB:-testdb}
+    ports:
+      - "${POSTGRES_EXTERNAL_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data:
+
+networks:
+  internal:
+    driver: bridge

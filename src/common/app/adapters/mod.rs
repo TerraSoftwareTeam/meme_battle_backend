@@ -1,0 +1,3 @@
+pub mod media_asset_to_user_avatar_adapter;
+
+pub use media_asset_to_user_avatar_adapter::MediaAssetToUserAvatarAdapter;

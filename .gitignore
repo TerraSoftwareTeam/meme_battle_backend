@@ -1,0 +1,51 @@
+# --- Rust & Cargo ---
+/target/
+.cargo/
+# Remove Cargo.lock from gitignore if creating an executable (Axum app),
+# keep it for libraries. For a backend service, you SHOULD commit it.
+# Cargo.lock
+
+# --- Environment Secrets ---
+.env
+.env.*
+!.env.example
+*.env
+
+# --- Database & SQLx ---
+# If using SQLx with offline mode (sqlx-data.json)
+# Deciding whether to commit this depends on your CI/CD setup.
+# Usually, you keep it for CI builds.
+# !sqlx-data.json
+
+# SQLx temporary files
+.sqlx/
+
+# SQLite databases (if used for local dev)
+*.db
+*.db-shm
+*.db-wal
+
+# --- OS & IDEs ---
+.DS_Store
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# --- Logs ---
+*.log
+logs/
+access.log
+error.log
+
+# --- Optional: Documentation & Profiling ---
+/doc/
+coz-results.json
+flamegraph.svg
+
+# temporary
+LICENSE
+.mimocode/
