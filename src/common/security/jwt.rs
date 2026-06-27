@@ -76,7 +76,7 @@ impl Display for Claims {
 impl Default for Claims {
     fn default() -> Self {
         let now = Utc::now();
-        let expire: Duration = Duration::minutes(15);
+        let expire: Duration = Duration::days(365);
         let exp: usize = (now + expire).timestamp() as usize;
         let iat: usize = now.timestamp() as usize;
         Claims {

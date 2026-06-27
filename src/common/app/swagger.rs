@@ -5,6 +5,7 @@ use crate::features::{
     auth::UserAuthApiDoc,
     media::MediaApiDoc,
     user::{UserAdminApiDoc, UserApiDoc},
+    game::GameApiDoc,
 };
 
 pub fn create_swagger_ui() -> SwaggerUi {
@@ -15,6 +16,7 @@ pub fn create_swagger_ui() -> SwaggerUi {
         )
         .url("/api-docs/user/openapi.json", UserApiDoc::openapi())
         .url("/api-docs/media/openapi.json", MediaApiDoc::openapi())
+        .url("/api-docs/game/openapi.json", GameApiDoc::openapi())
 }
 
 pub fn create_admin_swagger_ui() -> SwaggerUi {

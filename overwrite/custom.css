@@ -27,9 +27,7 @@ body {
   font-family:
     "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   color: var(--docs-text);
-  background:
-    linear-gradient(rgba(238, 242, 247, 0.975), rgba(238, 242, 247, 0.985)),
-    url("./anime-docs-bg.jpg") right top / cover no-repeat fixed;
+  background: #fff;
 }
 
 .docs-backdrop {
@@ -246,9 +244,7 @@ body {
 
 @media (max-width: 900px) {
   body {
-    background:
-      linear-gradient(rgba(238, 242, 247, 0.98), rgba(238, 242, 247, 0.99)),
-      url("./anime-docs-bg.jpg") center top / cover no-repeat fixed;
+    background: #fff;
   }
 
   .swagger-ui .topbar,

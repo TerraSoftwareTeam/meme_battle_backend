@@ -15,9 +15,8 @@ use crate::features::auth::{
     RefreshSessionCommand, RegisterUserCommand,
 };
 use crate::features::media::{
-    DeleteMediaCommand, FileStorage, GetMediaAssetUrlQuery, GetMediaByIdQuery, GetUserMediaQuery,
-    HackClubCdnStorage, MarkMediaAttachedCommand, MediaRepository, PostgresMediaRepository,
-    UploadMediaCommand, UploadMediaFromUrlCommand,
+    FileStorage, GetMediaAssetUrlQuery, HackClubCdnStorage, MarkMediaAttachedCommand,
+    MediaRepository, PostgresMediaRepository, UploadMediaCommand,
 };
 use crate::features::user::{
     AvatarMediaUploader, GetMeQuery, GetUserByIdQuery, GetUserListQuery, GetUsersQuery,
@@ -77,20 +76,10 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         config.hackclub_cdn_api_key.clone(),
     ));
     let upload_media = Arc::new(UploadMediaCommand::new(
-        media_storage.clone(),
-        media_repository.clone(),
-    ));
-    let upload_media_from_url = Arc::new(UploadMediaFromUrlCommand::new(
-        media_storage.clone(),
-        media_repository.clone(),
-    ));
-    let delete_media = Arc::new(DeleteMediaCommand::new(
         media_storage,
         media_repository.clone(),
     ));
-    let get_media_by_id = Arc::new(GetMediaByIdQuery::new(media_repository.clone()));
     let get_media_asset_url = Arc::new(GetMediaAssetUrlQuery::new(media_repository.clone()));
-    let get_user_media = Arc::new(GetUserMediaQuery::new(media_repository.clone()));
     let mark_media_attached = Arc::new(MarkMediaAttachedCommand::new(media_repository.clone()));
     let user_media_adapter = Arc::new(MediaAssetToUserAvatarAdapter::new(
         get_media_asset_url.clone(),
@@ -131,12 +120,8 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let auth_state = AuthState::new(register_user, login_user, auth_as_guest, refresh_session);
     let media_state = MediaState::new(
         upload_media,
-        upload_media_from_url,
-        delete_media,
-        get_media_by_id,
-        get_user_media,
         get_media_asset_url.clone(),
-        mark_media_attached,
+        mark_media_attached.clone(),
     );
     let user_state = UserState::new(
         update_me,
@@ -148,11 +133,67 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         promote_to_admin,
     );
 
+    // Game
+    let game_repository: Arc<dyn crate::features::game::GameRepository> =
+        Arc::new(crate::features::game::GameRepositoryImpl::new(pool.clone()));
+    let create_game = Arc::new(crate::features::game::CreateGameCommand::new(game_repository.clone()));
+    let join_game = Arc::new(crate::features::game::JoinGameCommand::new(game_repository.clone()));
+    let set_ready = Arc::new(crate::features::game::SetReadyCommand::new(game_repository.clone()));
+    let start_game = Arc::new(crate::features::game::StartGameCommand::new(game_repository.clone()));
+    let submit_card = Arc::new(crate::features::game::SubmitCardCommand::new(game_repository.clone()));
+    let vote_card = Arc::new(crate::features::game::VoteCardCommand::new(game_repository.clone()));
+    let get_game_state = Arc::new(crate::features::game::GetGameStateQuery::new(game_repository.clone()));
+    let create_meme_pack = Arc::new(crate::features::game::CreateMemePackCommand::new(
+        game_repository.clone(),
+        mark_media_attached.clone(),
+    ));
+    let update_meme_pack = Arc::new(crate::features::game::UpdateMemePackCommand::new(game_repository.clone()));
+    let delete_meme_pack = Arc::new(crate::features::game::DeleteMemePackCommand::new(game_repository.clone()));
+    let add_memes_to_pack = Arc::new(crate::features::game::AddMemesToPackCommand::new(
+        game_repository.clone(),
+        mark_media_attached.clone(),
+    ));
+    let delete_pack_meme = Arc::new(crate::features::game::DeletePackMemeCommand::new(game_repository.clone()));
+    let create_situation_pack = Arc::new(crate::features::game::CreateSituationPackCommand::new(game_repository.clone()));
+    let update_situation_pack = Arc::new(crate::features::game::UpdateSituationPackCommand::new(game_repository.clone()));
+    let delete_situation_pack = Arc::new(crate::features::game::DeleteSituationPackCommand::new(game_repository.clone()));
+    let add_situations_to_pack = Arc::new(crate::features::game::AddSituationsToPackCommand::new(game_repository.clone()));
+    let delete_pack_situation = Arc::new(crate::features::game::DeletePackSituationCommand::new(game_repository.clone()));
+    let list_meme_packs = Arc::new(crate::features::game::ListMemePacksQuery::new(game_repository.clone()));
+    let get_meme_pack = Arc::new(crate::features::game::GetMemePackQuery::new(game_repository.clone()));
+    let list_situation_packs = Arc::new(crate::features::game::ListSituationPacksQuery::new(game_repository.clone()));
+    let get_situation_pack = Arc::new(crate::features::game::GetSituationPackQuery::new(game_repository));
+
+    let game_state = crate::features::game::GameState::new(
+        create_game,
+        join_game,
+        set_ready,
+        start_game,
+        submit_card,
+        vote_card,
+        get_game_state,
+        create_meme_pack,
+        update_meme_pack,
+        delete_meme_pack,
+        add_memes_to_pack,
+        delete_pack_meme,
+        create_situation_pack,
+        update_situation_pack,
+        delete_situation_pack,
+        add_situations_to_pack,
+        delete_pack_situation,
+        list_meme_packs,
+        get_meme_pack,
+        list_situation_packs,
+        get_situation_pack,
+    );
+
     let state = AppState::new(
         config,
         auth_state,
         media_state,
         user_state,
+        game_state,
     );
 
     tracing::info!("Application state built");

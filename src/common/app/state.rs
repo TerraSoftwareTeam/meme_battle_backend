@@ -9,6 +9,7 @@ pub mod user;
 pub use auth::AuthState;
 pub use media::MediaState;
 pub use user::UserState;
+pub use crate::features::game::GameState;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -16,6 +17,7 @@ pub struct AppState {
     auth: AuthState,
     media: MediaState,
     user: UserState,
+    game: GameState,
 }
 
 impl AppState {
@@ -24,12 +26,14 @@ impl AppState {
         auth: AuthState,
         media: MediaState,
         user: UserState,
+        game: GameState,
     ) -> Self {
         Self {
             config,
             auth,
             media,
             user,
+            game,
         }
     }
 }
@@ -49,5 +53,11 @@ impl FromRef<AppState> for MediaState {
 impl FromRef<AppState> for UserState {
     fn from_ref(state: &AppState) -> Self {
         state.user.clone()
+    }
+}
+
+impl FromRef<AppState> for GameState {
+    fn from_ref(state: &AppState) -> Self {
+        state.game.clone()
     }
 }

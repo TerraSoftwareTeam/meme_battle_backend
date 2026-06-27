@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post},
+    routing::post,
     Router,
 };
 use utoipa::{
@@ -12,14 +12,11 @@ use crate::{
     features::media::{
         api::{
             dto::{
-                request::{UploadMediaFromUrlDto, UploadMediaRequestDto},
+                request::UploadMediaRequestDto,
                 response::MediaAssetDto,
             },
             handlers::{
-                __path_delete_media, __path_get_media_by_id, __path_get_user_media,
-                __path_upload_comment_media, __path_upload_entry_media, __path_upload_media,
-                __path_upload_media_from_url, delete_media, get_media_by_id, get_user_media,
-                upload_comment_media, upload_entry_media, upload_media, upload_media_from_url,
+                __path_upload_image_media, upload_image_media,
             },
         },
         MediaProvider,
@@ -29,16 +26,9 @@ use crate::{
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        get_user_media,
-        get_media_by_id,
-        upload_media,
-        upload_media_from_url,
-        upload_comment_media,
-        upload_entry_media,
-        delete_media,
+        upload_image_media,
     ),
     components(schemas(
-        UploadMediaFromUrlDto,
         UploadMediaRequestDto,
         MediaAssetDto,
         MediaProvider,
@@ -71,10 +61,5 @@ impl utoipa::Modify for MediaApiDoc {
 
 pub fn media_routes() -> Router<AppState> {
     Router::new()
-        .route("/", get(get_user_media))
-        .route("/{id}", get(get_media_by_id).delete(delete_media))
-        .route("/upload", post(upload_media))
-        .route("/upload_from_url", post(upload_media_from_url))
-        .route("/upload/comment", post(upload_comment_media))
-        .route("/upload/entry", post(upload_entry_media))
+        .route("/upload/image", post(upload_image_media))
 }

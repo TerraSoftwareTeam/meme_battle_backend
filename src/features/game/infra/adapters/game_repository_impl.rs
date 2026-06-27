@@ -1,0 +1,1254 @@
+use async_trait::async_trait;
+use sqlx::{PgPool, Postgres, Transaction};
+use uuid::Uuid;
+
+use crate::{
+    common::http::error::AppError,
+    features::game::domain::{
+        ports::GameRepository,
+        model::{
+            Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
+            PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel,
+            MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation,
+        },
+    },
+};
+
+#[derive(Clone)]
+pub struct GameRepositoryImpl {
+    pool: PgPool,
+}
+
+impl GameRepositoryImpl {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl GameRepository for GameRepositoryImpl {
+    async fn find_game(&self, game_id: Uuid) -> Result<Option<Game>, AppError> {
+        let game = sqlx::query_as::<_, Game>(
+            r#"
+            SELECT id, host_id, mode, status, version, created_at
+            FROM games
+            WHERE id = $1
+            "#,
+        )
+        .bind(game_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(game)
+    }
+
+    async fn get_players(&self, game_id: Uuid) -> Result<Vec<GamePlayer>, AppError> {
+        let players = sqlx::query_as::<_, GamePlayer>(
+            r#"
+            SELECT game_id, user_id, score, is_ready, joined_at
+            FROM game_players
+            WHERE game_id = $1
+            ORDER BY joined_at ASC
+            "#,
+        )
+        .bind(game_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(players)
+    }
+
+    async fn get_player_hand(
+        &self,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<GameCard>, AppError> {
+        #[derive(sqlx::FromRow)]
+        struct RawHandRow {
+            meme_id: Option<Uuid>,
+            situation_id: Option<Uuid>,
+            media_url: Option<String>,
+            prompt_text: Option<String>,
+        }
+
+        let rows = sqlx::query_as::<_, RawHandRow>(
+            r#"
+            SELECT
+                gph.meme_id,
+                gph.situation_id,
+                ma.url AS media_url,
+                ps.prompt_text
+            FROM game_player_hand gph
+            LEFT JOIN pack_memes pm ON gph.meme_id = pm.id
+            LEFT JOIN media_assets ma ON pm.media_id = ma.id
+            LEFT JOIN pack_situations ps ON gph.situation_id = ps.id
+            WHERE gph.game_id = $1 AND gph.user_id = $2 AND gph.is_used = false
+            "#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let cards = rows
+            .into_iter()
+            .filter_map(|row| {
+                if let Some(meme_id) = row.meme_id {
+                    Some(GameCard::Meme {
+                        id: meme_id,
+                        media_url: row.media_url.unwrap_or_default(),
+                    })
+                } else if let Some(situation_id) = row.situation_id {
+                    Some(GameCard::Situation {
+                        id: situation_id,
+                        prompt_text: row.prompt_text.unwrap_or_default(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(cards)
+    }
+
+    async fn get_current_round(&self, game_id: Uuid) -> Result<Option<GameRound>, AppError> {
+        let round = sqlx::query_as::<_, GameRound>(
+            r#"
+            SELECT id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, created_at
+            FROM game_rounds
+            WHERE game_id = $1
+            ORDER BY round_number DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(game_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(round)
+    }
+
+    async fn get_round(&self, round_id: Uuid) -> Result<Option<GameRound>, AppError> {
+        let round = sqlx::query_as::<_, GameRound>(
+            r#"
+            SELECT id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, created_at
+            FROM game_rounds
+            WHERE id = $1
+            "#,
+        )
+        .bind(round_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(round)
+    }
+
+    async fn get_prompt_card(
+        &self,
+        situation_id: Option<Uuid>,
+        meme_id: Option<Uuid>,
+    ) -> Result<Option<GameCard>, AppError> {
+        if let Some(sit_id) = situation_id {
+            let text = sqlx::query_scalar::<_, String>(
+                r#"
+                SELECT prompt_text
+                FROM pack_situations
+                WHERE id = $1
+                "#,
+            )
+            .bind(sit_id)
+            .fetch_optional(&self.pool)
+            .await?;
+
+            if let Some(text) = text {
+                return Ok(Some(GameCard::Situation {
+                    id: sit_id,
+                    prompt_text: text,
+                }));
+            }
+        } else if let Some(m_id) = meme_id {
+            let url = sqlx::query_scalar::<_, String>(
+                r#"
+                SELECT ma.url
+                FROM pack_memes pm
+                JOIN media_assets ma ON pm.media_id = ma.id
+                WHERE pm.id = $1
+                "#,
+            )
+            .bind(m_id)
+            .fetch_optional(&self.pool)
+            .await?;
+
+            if let Some(url) = url {
+                return Ok(Some(GameCard::Meme {
+                    id: m_id,
+                    media_url: url,
+                }));
+            }
+        }
+        Ok(None)
+    }
+
+    async fn get_available_memes(&self, game_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        let ids = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT pm.id
+            FROM pack_memes pm
+            JOIN game_selected_meme_packs gsmp ON pm.pack_id = gsmp.pack_id
+            WHERE gsmp.game_id = $1
+            "#,
+        )
+        .bind(game_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(ids)
+    }
+
+    async fn get_available_situations(&self, game_id: Uuid) -> Result<Vec<Uuid>, AppError> {
+        let ids = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT ps.id
+            FROM pack_situations ps
+            JOIN game_selected_situation_packs gssp ON ps.pack_id = gssp.pack_id
+            WHERE gssp.game_id = $1
+            "#,
+        )
+        .bind(game_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(ids)
+    }
+
+    async fn get_submission_by_id(
+        &self,
+        submission_id: Uuid,
+    ) -> Result<Option<RoundSubmission>, AppError> {
+        let sub = sqlx::query_as::<_, RoundSubmission>(
+            r#"
+            SELECT id, round_id, user_id, submission_meme_id, submission_situation_id, submitted_at
+            FROM round_submissions
+            WHERE id = $1
+            "#,
+        )
+        .bind(submission_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(sub)
+    }
+
+    async fn get_players_with_submissions(
+        &self,
+        game_id: Uuid,
+        round_id: Option<Uuid>,
+    ) -> Result<Vec<PlayerSubmissionState>, AppError> {
+        if let Some(r_id) = round_id {
+            let players = sqlx::query_as::<_, PlayerSubmissionState>(
+                r#"
+                SELECT
+                    gp.user_id,
+                    gp.score,
+                    gp.is_ready,
+                    EXISTS (
+                        SELECT 1
+                        FROM round_submissions rs
+                        WHERE rs.round_id = $2 AND rs.user_id = gp.user_id
+                    ) AS has_submitted
+                FROM game_players gp
+                WHERE gp.game_id = $1
+                ORDER BY gp.joined_at ASC
+                "#,
+            )
+            .bind(game_id)
+            .bind(r_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            Ok(players)
+        } else {
+            let players = sqlx::query_as::<_, PlayerSubmissionState>(
+                r#"
+                SELECT
+                    gp.user_id,
+                    gp.score,
+                    gp.is_ready,
+                    false AS has_submitted
+                FROM game_players gp
+                WHERE gp.game_id = $1
+                ORDER BY gp.joined_at ASC
+                "#,
+            )
+            .bind(game_id)
+            .fetch_all(&self.pool)
+            .await?;
+
+            Ok(players)
+        }
+    }
+
+    async fn begin(&self) -> Result<Transaction<'static, Postgres>, AppError> {
+        let tx = self.pool.begin().await?;
+        Ok(tx)
+    }
+
+    async fn create_game(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        host_id: Uuid,
+        mode: GameMode,
+    ) -> Result<Game, AppError> {
+        let game = sqlx::query_as::<_, Game>(
+            r#"
+            INSERT INTO games (host_id, mode, status, version)
+            VALUES ($1, $2, 'lobby', 1)
+            RETURNING id, host_id, mode, status, version, created_at
+            "#,
+        )
+        .bind(host_id)
+        .bind(mode)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(game)
+    }
+
+    async fn add_selected_situation_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        pack_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO game_selected_situation_packs (game_id, pack_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(game_id)
+        .bind(pack_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn add_selected_meme_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        pack_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO game_selected_meme_packs (game_id, pack_id)
+            VALUES ($1, $2)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(game_id)
+        .bind(pack_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn find_game_for_update(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<Option<Game>, AppError> {
+        let game = sqlx::query_as::<_, Game>(
+            r#"
+            SELECT id, host_id, mode, status, max_rounds, current_round, version, created_at
+            FROM games
+            WHERE id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(game_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        Ok(game)
+    }
+
+    async fn increment_game_version(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<i64, AppError> {
+        let new_version = sqlx::query_scalar::<_, i64>(
+            r#"
+            UPDATE games
+            SET version = version + 1
+            WHERE id = $1
+            RETURNING version
+            "#,
+        )
+        .bind(game_id)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(new_version)
+    }
+
+    async fn update_game_status(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        status: GameStatus,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE games
+            SET status = $2
+            WHERE id = $1
+            "#,
+        )
+        .bind(game_id)
+        .bind(status)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn add_player(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+        is_ready: bool,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO game_players (game_id, user_id, score, is_ready)
+            VALUES ($1, $2, 0, $3)
+            ON CONFLICT (game_id, user_id) DO NOTHING
+            "#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .bind(is_ready)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn update_player_ready(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+        is_ready: bool,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE game_players
+            SET is_ready = $3
+            WHERE game_id = $1 AND user_id = $2
+            "#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .bind(is_ready)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_round_for_update(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+    ) -> Result<Option<GameRound>, AppError> {
+        let round = sqlx::query_as::<_, GameRound>(
+            r#"
+            SELECT id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, created_at
+            FROM game_rounds
+            WHERE id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(round_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        Ok(round)
+    }
+
+    async fn insert_round(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        round_number: i32,
+        prompt_situation_id: Option<Uuid>,
+        prompt_meme_id: Option<Uuid>,
+    ) -> Result<GameRound, AppError> {
+        let round = sqlx::query_as::<_, GameRound>(
+            r#"
+            INSERT INTO game_rounds (game_id, round_number, prompt_situation_id, prompt_meme_id, phase)
+            VALUES ($1, $2, $3, $4, 'submitting')
+            RETURNING id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, created_at
+            "#,
+        )
+        .bind(game_id)
+        .bind(round_number)
+        .bind(prompt_situation_id)
+        .bind(prompt_meme_id)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(round)
+    }
+
+    async fn check_player_hand_card(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+        card_id: Uuid,
+    ) -> Result<Option<GamePlayerHandCard>, AppError> {
+        let hand_card = sqlx::query_as::<_, GamePlayerHandCard>(
+            r#"
+            SELECT id, game_id, user_id, meme_id, situation_id, is_used
+            FROM game_player_hand
+            WHERE game_id = $1 AND user_id = $2 AND (meme_id = $3 OR situation_id = $3) AND is_used = false
+            "#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .bind(card_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        Ok(hand_card)
+    }
+
+    async fn mark_card_used(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        hand_card_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE game_player_hand
+            SET is_used = true
+            WHERE id = $1
+            "#,
+        )
+        .bind(hand_card_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn insert_hand_card(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+        meme_id: Option<Uuid>,
+        situation_id: Option<Uuid>,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO game_player_hand (game_id, user_id, meme_id, situation_id)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .bind(meme_id)
+        .bind(situation_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn insert_submission(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+        user_id: Uuid,
+        meme_id: Option<Uuid>,
+        situation_id: Option<Uuid>,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO round_submissions (round_id, user_id, submission_meme_id, submission_situation_id)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(round_id)
+        .bind(user_id)
+        .bind(meme_id)
+        .bind(situation_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_submissions_count(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+    ) -> Result<i64, AppError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM round_submissions
+            WHERE round_id = $1
+            "#,
+        )
+        .bind(round_id)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(count)
+    }
+
+    async fn update_round_phase(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+        phase: RoundPhase,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE game_rounds
+            SET phase = $2
+            WHERE id = $1
+            "#,
+        )
+        .bind(round_id)
+        .bind(phase)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn update_round_winner_and_phase(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+        winner_user_id: Uuid,
+        phase: RoundPhase,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE game_rounds
+            SET winner_user_id = $2, phase = $3
+            WHERE id = $1
+            "#,
+        )
+        .bind(round_id)
+        .bind(winner_user_id)
+        .bind(phase)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn increment_player_score(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE game_players
+            SET score = score + 1
+            WHERE game_id = $1 AND user_id = $2
+            "#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn check_player_voted(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+        voter_id: Uuid,
+    ) -> Result<bool, AppError> {
+        let voted = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM round_votes
+                WHERE round_id = $1 AND voter_id = $2
+            )
+            "#,
+        )
+        .bind(round_id)
+        .bind(voter_id)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(voted)
+    }
+
+    async fn insert_vote(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+        voter_id: Uuid,
+        submission_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO round_votes (round_id, voter_id, submission_id)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(round_id)
+        .bind(voter_id)
+        .bind(submission_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_votes_count(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+    ) -> Result<i64, AppError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM round_votes
+            WHERE round_id = $1
+            "#,
+        )
+        .bind(round_id)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(count)
+    }
+
+    async fn get_votes_by_submission(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+    ) -> Result<Vec<(Uuid, i64)>, AppError> {
+        #[derive(sqlx::FromRow)]
+        struct VoteTally {
+            submission_id: Uuid,
+            vote_count: Option<i64>,
+        }
+
+        let rows = sqlx::query_as::<_, VoteTally>(
+            r#"
+            SELECT submission_id, COUNT(*) AS vote_count
+            FROM round_votes
+            WHERE round_id = $1
+            GROUP BY submission_id
+            "#,
+        )
+        .bind(round_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        let results = rows
+            .into_iter()
+            .map(|row| (row.submission_id, row.vote_count.unwrap_or(0)))
+            .collect();
+
+        Ok(results)
+    }
+
+    async fn insert_game_event(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        event_id: Uuid,
+        game_id: Uuid,
+        version: i64,
+        event_type: &str,
+        payload: serde_json::Value,
+    ) -> Result<(), AppError> {
+        // UNIQUE (game_id, version) enforces Optimistic Concurrency Control.
+        // If a concurrent writer already committed the same version slot we get
+        // a 23505 unique violation — map it to Conflict so the caller can
+        // surface a meaningful HTTP 409 rather than an opaque 500.
+        sqlx::query(
+            r#"
+            INSERT INTO game_events (id, game_id, version, type, payload)
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(event_id)
+        .bind(game_id)
+        .bind(version)
+        .bind(event_type)
+        .bind(payload)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(ref db_err) = e {
+                if db_err.code().as_deref() == Some("23505") {
+                    return AppError::Conflict(format!(
+                        "Concurrent modification detected for game {} at version {}. \
+                         Please retry the operation.",
+                        game_id, version
+                    ));
+                }
+            }
+            AppError::DatabaseError(e)
+        })?;
+
+        Ok(())
+    }
+
+    async fn update_game_current_round(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        new_round: i32,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE games
+            SET current_round = $1
+            WHERE id = $2
+            "#,
+        )
+        .bind(new_round)
+        .bind(game_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn insert_centrifugo_outbox(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        method: &str,
+        payload: serde_json::Value,
+        partition: i32,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO centrifugo_outbox (method, payload, partition)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(method)
+        .bind(payload)
+        .bind(partition)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn insert_meme_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        author_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+        language_code: &str,
+        safety_level: ContentSafetyLevel,
+        is_public: bool,
+    ) -> Result<Uuid, AppError> {
+        let pack_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            INSERT INTO meme_packs (author_id, name, description, language_code, safety_level, is_public)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+            "#,
+        )
+        .bind(author_id)
+        .bind(name)
+        .bind(description)
+        .bind(language_code)
+        .bind(safety_level)
+        .bind(is_public)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(pack_id)
+    }
+
+    async fn insert_pack_meme(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+        media_id: i64,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO pack_memes (pack_id, media_id)
+            VALUES ($1, $2)
+            "#,
+        )
+        .bind(pack_id)
+        .bind(media_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(ref db_err) = e {
+                if db_err.code().as_deref() == Some("23505") {
+                    return AppError::Conflict(format!(
+                        "Media asset {} is already in this pack",
+                        media_id
+                    ));
+                }
+            }
+            AppError::DatabaseError(e)
+        })?;
+
+        Ok(())
+    }
+
+    async fn find_meme_pack(&self, pack_id: Uuid) -> Result<Option<MemePack>, AppError> {
+        let pack = sqlx::query_as::<_, MemePack>(
+            r#"
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            FROM meme_packs
+            WHERE id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(pack)
+    }
+
+    async fn list_meme_packs(&self, author_id: Uuid) -> Result<Vec<MemePack>, AppError> {
+        let packs = sqlx::query_as::<_, MemePack>(
+            r#"
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            FROM meme_packs
+            WHERE is_public = true OR author_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(author_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(packs)
+    }
+
+    async fn get_pack_memes_list(&self, pack_id: Uuid) -> Result<Vec<PackMemeDetails>, AppError> {
+        let memes = sqlx::query_as::<_, PackMemeDetails>(
+            r#"
+            SELECT pm.id, pm.pack_id, pm.media_id, ma.url AS media_url
+            FROM pack_memes pm
+            JOIN media_assets ma ON pm.media_id = ma.id
+            WHERE pm.pack_id = $1
+            ORDER BY pm.id ASC
+            "#,
+        )
+        .bind(pack_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(memes)
+    }
+
+    async fn update_meme_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+        language_code: &str,
+        safety_level: ContentSafetyLevel,
+        is_public: bool,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE meme_packs
+            SET name = $2, description = $3, language_code = $4, safety_level = $5, is_public = $6
+            WHERE id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .bind(name)
+        .bind(description)
+        .bind(language_code)
+        .bind(safety_level)
+        .bind(is_public)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn delete_meme_pack(&self, tx: &mut Transaction<'_, Postgres>, pack_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            DELETE FROM meme_packs
+            WHERE id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn find_pack_meme_by_id(&self, meme_id: Uuid) -> Result<Option<PackMeme>, AppError> {
+        let meme = sqlx::query_as::<_, PackMeme>(
+            r#"
+            SELECT id, pack_id, media_id
+            FROM pack_memes
+            WHERE id = $1
+            "#,
+        )
+        .bind(meme_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(meme)
+    }
+
+    async fn delete_pack_meme(&self, tx: &mut Transaction<'_, Postgres>, meme_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            DELETE FROM pack_memes
+            WHERE id = $1
+            "#,
+        )
+        .bind(meme_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    // Situation packs
+    async fn insert_situation_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        author_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+        language_code: &str,
+        safety_level: ContentSafetyLevel,
+        is_public: bool,
+    ) -> Result<Uuid, AppError> {
+        let pack_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            INSERT INTO situation_packs (author_id, name, description, language_code, safety_level, is_public)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+            "#,
+        )
+        .bind(author_id)
+        .bind(name)
+        .bind(description)
+        .bind(language_code)
+        .bind(safety_level)
+        .bind(is_public)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        Ok(pack_id)
+    }
+
+    async fn insert_pack_situation(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+        prompt_text: &str,
+    ) -> Result<Uuid, AppError> {
+        let sit_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            INSERT INTO pack_situations (pack_id, prompt_text)
+            VALUES ($1, $2)
+            RETURNING id
+            "#,
+        )
+        .bind(pack_id)
+        .bind(prompt_text)
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(|e| {
+            if let sqlx::Error::Database(ref db_err) = e {
+                if db_err.code().as_deref() == Some("23505") {
+                    return AppError::Conflict(format!(
+                        "Situation prompt \"{}\" already exists in this pack",
+                        prompt_text
+                    ));
+                }
+            }
+            AppError::DatabaseError(e)
+        })?;
+
+        Ok(sit_id)
+    }
+
+    async fn find_situation_pack(&self, pack_id: Uuid) -> Result<Option<SituationPack>, AppError> {
+        let pack = sqlx::query_as::<_, SituationPack>(
+            r#"
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            FROM situation_packs
+            WHERE id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(pack)
+    }
+
+    async fn list_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError> {
+        let packs = sqlx::query_as::<_, SituationPack>(
+            r#"
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            FROM situation_packs
+            WHERE is_public = true OR author_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(author_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(packs)
+    }
+
+    async fn get_pack_situations_list(&self, pack_id: Uuid) -> Result<Vec<PackSituation>, AppError> {
+        let situations = sqlx::query_as::<_, PackSituation>(
+            r#"
+            SELECT id, pack_id, prompt_text
+            FROM pack_situations
+            WHERE pack_id = $1
+            ORDER BY id ASC
+            "#,
+        )
+        .bind(pack_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(situations)
+    }
+
+    async fn update_situation_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+        language_code: &str,
+        safety_level: ContentSafetyLevel,
+        is_public: bool,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE situation_packs
+            SET name = $2, description = $3, language_code = $4, safety_level = $5, is_public = $6
+            WHERE id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .bind(name)
+        .bind(description)
+        .bind(language_code)
+        .bind(safety_level)
+        .bind(is_public)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn delete_situation_pack(&self, tx: &mut Transaction<'_, Postgres>, pack_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            DELETE FROM situation_packs
+            WHERE id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn find_pack_situation_by_id(&self, situation_id: Uuid) -> Result<Option<PackSituation>, AppError> {
+        let sit = sqlx::query_as::<_, PackSituation>(
+            r#"
+            SELECT id, pack_id, prompt_text
+            FROM pack_situations
+            WHERE id = $1
+            "#,
+        )
+        .bind(situation_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(sit)
+    }
+
+    async fn delete_pack_situation(&self, tx: &mut Transaction<'_, Postgres>, situation_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            DELETE FROM pack_situations
+            WHERE id = $1
+            "#,
+        )
+        .bind(situation_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn validate_media_exists(&self, media_ids: &[i64]) -> Result<(), AppError> {
+        if media_ids.is_empty() {
+            return Ok(());
+        }
+
+        let found: Vec<i64> = sqlx::query_scalar(
+            r#"SELECT id FROM media_assets WHERE id = ANY($1)"#,
+        )
+        .bind(media_ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let missing: Vec<i64> = media_ids
+            .iter()
+            .copied()
+            .filter(|id| !found.contains(id))
+            .collect();
+
+        if !missing.is_empty() {
+            return Err(AppError::NotFound(format!(
+                "Media assets not found: {:?}",
+                missing
+            )));
+        }
+
+        Ok(())
+    }
+}

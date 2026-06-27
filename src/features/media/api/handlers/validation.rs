@@ -1,17 +1,10 @@
 use crate::{
     common::http::error::AppError,
-    features::media::{api::dto::request::UploadMediaFromUrlDto, UploadFile},
+    features::media::UploadFile,
 };
 use axum::extract::Multipart;
-use validator::Validate;
 
 const MAX_UPLOAD_SIZE_BYTES: usize = 35 * 1024 * 1024;
-
-pub fn validate_upload_media_from_url(payload: &UploadMediaFromUrlDto) -> Result<(), AppError> {
-    payload
-        .validate()
-        .map_err(|err| AppError::ValidationError(format!("Invalid input: {}", err)))
-}
 
 pub async fn extract_file(multipart: &mut Multipart) -> Result<UploadFile, AppError> {
     while let Some(field) = multipart

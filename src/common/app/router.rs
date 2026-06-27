@@ -32,6 +32,7 @@ use crate::{
         auth::user_auth_routes,
         media::media_routes,
         user::user_routes,
+        game::game_routes,
     },
 };
 
@@ -66,6 +67,7 @@ pub fn create_router(state: AppState) -> Router {
     let protected_routes = Router::new()
         .nest("/user", user_routes())
         .nest("/media", media_routes())
+        .nest("/games", game_routes())
         // enforce JWT authentication
         .route_layer(middleware::from_fn(jwt::jwt_auth))
         // attach inspecter
