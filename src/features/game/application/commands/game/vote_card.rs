@@ -1,14 +1,15 @@
 use std::sync::Arc;
-
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
-    features::game::application::commands::outbox_helper::publish_event,
-    features::game::domain::{
-        model::{GameAggregate, GameEvent, GameStatus, RoundPhase},
-        ports::GameRepository,
+    features::game::{
+        application::ports::game_notification_sender::GameNotificationSender,
+        domain::{
+            model::{GameAggregate, GameEvent, GameStatus, RoundPhase},
+            ports::GameRepository,
+        },
     },
 };
 
@@ -25,16 +26,17 @@ use crate::{
 ///       b. UPDATE game_rounds read-model (winner, phase)
 ///       c. UPDATE game_players read-model (score)
 ///       d. INSERT game_events  ← OCC: UNIQUE(game_id, version) catches races
-///       e. INSERT centrifugo_outbox (Transactional Outbox pattern)
+///       e. INSERT realtime_outbox (Transactional Outbox pattern)
 /// 5.  apply_events in-memory (optional projection for tests / return value)
 /// ```
 pub struct VoteCardCommand {
     repo: Arc<dyn GameRepository>,
+    notification_sender: Arc<dyn GameNotificationSender>,
 }
 
 impl VoteCardCommand {
-    pub fn new(repo: Arc<dyn GameRepository>) -> Self {
-        Self { repo }
+    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
+        Self { repo, notification_sender }
     }
 
     pub async fn execute(
@@ -60,6 +62,7 @@ impl VoteCardCommand {
 
         // 1b. Build in-memory aggregate from the read-model snapshot
         let mut aggregate = GameAggregate::from_game(&game);
+        let is_last_round = aggregate.is_last_round();
 
         // 1c. Lock the round row so no concurrent request can mutate it
         let round = self
@@ -166,6 +169,14 @@ impl VoteCardCommand {
                     .await?;
             }
 
+            // Draw reserve card for each player
+            let round_number = round.round_number;
+            for player in &players {
+                self.repo
+                    .draw_reserve_card(&mut tx, game_id, player.user_id, round_number)
+                    .await?;
+            }
+
             // Fetch fresh scores for the event payload
             let updated_players = self.repo.get_players(game_id).await?;
             let scores: Vec<(Uuid, i32)> = updated_players
@@ -188,7 +199,7 @@ impl VoteCardCommand {
                 .await?;
 
             // 2d. If this was the last round → emit GameFinished
-            if aggregate.is_last_round() {
+            if is_last_round {
                 let final_scores: Vec<(Uuid, i32)> = updated_players
                     .iter()
                     .map(|p| (p.user_id, p.score))
@@ -203,10 +214,19 @@ impl VoteCardCommand {
                     .update_game_status(&mut tx, game_id, GameStatus::Finished)
                     .await?;
 
+                // Delete content locks since game is finished
+                self.repo
+                    .delete_game_content_locks(&mut tx, game_id)
+                    .await?;
+
                 // Re-apply to capture the Finished status change in aggregate
                 aggregate.apply_events(&[GameEvent::GameFinished {
                     final_scores: final_scores.clone(),
                 }]);
+            } else {
+                self.repo
+                    .activate_next_round(&mut tx, game_id, aggregate.current_round)
+                    .await?;
             }
         } else {
             // No round completion yet — still apply the VoteRegistered in-memory
@@ -214,33 +234,101 @@ impl VoteCardCommand {
         }
 
         // ── Phase 3: Persist events (OCC + Transactional Outbox) ─────────────
-        //
-        // We write one DB row per domain event into `game_events`.  Each row
-        // gets a monotonically-increasing version number starting from the
-        // version that was loaded at the top of this handler.
-        //
-        // UNIQUE (game_id, version) means two concurrent writes for the same
-        // version slot produce a 23505 → AppError::Conflict (HTTP 409).
-        // The client must retry; because we hold a FOR UPDATE lock on the games
-        // row, only one writer can reach this point at a time, so the version
-        // numbers are actually assigned sequentially.  The unique constraint is
-        // a belt-and-suspenders safeguard against bugs or future lock removal.
 
         let base_version = game.version; // the version we read under the lock
         for (i, event) in events.iter().enumerate() {
             let slot = base_version + 1 + i as i64;
-            let event_id = Uuid::new_v4();
             let payload = event_payload(event);
 
-            publish_event(
-                self.repo.as_ref(),
-                &mut tx,
-                game_id,
-                slot,
-                event.event_type(),
-                payload,
-            )
-            .await?;
+            // 1. Write to game_events table (event store)
+            self.repo
+                .insert_game_event(
+                    &mut tx,
+                    Uuid::new_v4(),
+                    game_id,
+                    slot,
+                    event.event_type(),
+                    payload.clone(),
+                )
+                .await?;
+
+            // 2. Map to centrifugo realtime envelope and insert into outbox
+            match event {
+                GameEvent::VoteRegistered { round_id, voter_id } => {
+                    self.notification_sender
+                        .notify_vote_received(&mut tx, game_id, *round_id, *voter_id, slot)
+                        .await?;
+                }
+                GameEvent::RoundFinished { round_id, winner_user_id, scores } => {
+                    self.notification_sender
+                        .notify_round_finished(
+                            &mut tx,
+                            game_id,
+                            *round_id,
+                            round.round_number,
+                            winner_user_id.unwrap_or(Uuid::nil()),
+                            scores.clone(),
+                            slot,
+                        )
+                        .await?;
+
+                    // Also send hand updated events for each player
+                    for player in &players {
+                        let cards = self.repo.get_player_hand_with_media(&mut tx, game_id, player.user_id).await?;
+                        self.notification_sender
+                            .notify_hand_updated(&mut tx, game_id, player.user_id, *round_id, cards, slot)
+                            .await?;
+                    }
+
+                    // If not last round, send next RoundStarted event
+                    if !is_last_round {
+                        let next_round = sqlx::query_as::<_, crate::features::game::domain::model::GameRound>(
+                            r#"
+                            SELECT id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, created_at
+                            FROM game_rounds
+                            WHERE game_id = $1 AND round_number = $2
+                            "#,
+                        )
+                        .bind(game_id)
+                        .bind(aggregate.current_round)
+                        .fetch_one(&mut *tx)
+                        .await?;
+
+                        let prompt_kind = if next_round.prompt_situation_id.is_some() {
+                            "situation".to_string()
+                        } else {
+                            "meme".to_string()
+                        };
+                        let prompt_id = next_round.prompt_situation_id
+                            .or(next_round.prompt_meme_id)
+                            .unwrap();
+
+                        self.notification_sender
+                            .notify_round_started(
+                                &mut tx,
+                                game_id,
+                                next_round.id,
+                                next_round.round_number,
+                                prompt_kind,
+                                prompt_id,
+                                slot,
+                            )
+                            .await?;
+                    }
+                }
+                GameEvent::GameFinished { final_scores } => {
+                    let updated_players = self.repo.get_players(game_id).await?;
+                    let winner_user_id = updated_players
+                        .iter()
+                        .max_by_key(|p| p.score)
+                        .map(|p| p.user_id)
+                        .unwrap_or(Uuid::nil());
+
+                    self.notification_sender
+                        .notify_game_finished(&mut tx, game_id, winner_user_id, final_scores.clone(), slot)
+                        .await?;
+                }
+            }
 
             // Advance the games.version read-model for every event we commit
             self.repo.increment_game_version(&mut tx, game_id).await?;
@@ -287,3 +375,4 @@ fn event_payload(event: &GameEvent) -> serde_json::Value {
         }
     }
 }
+

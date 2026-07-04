@@ -56,7 +56,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Err(err.into());
     }
 
-    let state = build_app_state(pool, config.clone());
+    let state = build_app_state(pool.clone(), config.clone());
+
+    // Start unified realtime outbox processor worker
+    state.realtime.processor.clone().start(pool.clone());
+
     let app = create_router(state);
 
     let addr = format!("{}:{}", config.service_host, config.service_port);

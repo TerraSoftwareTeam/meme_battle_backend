@@ -157,3 +157,35 @@ where
     });
     Ok(next.run(req.map(Into::into)).await)
 }
+
+#[derive(Debug, Serialize)]
+pub struct CentrifugoConnectClaims {
+    pub sub: String,
+    pub exp: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CentrifugoSubscribeClaims {
+    pub sub: String,
+    pub channel: String,
+    pub exp: i64,
+}
+
+pub fn make_centrifugo_connect_token(user_id: &str) -> Result<String, AppError> {
+    let exp = (Utc::now() + Duration::days(1)).timestamp();
+    let claims = CentrifugoConnectClaims {
+        sub: user_id.to_string(),
+        exp,
+    };
+    encode(&Header::default(), &claims, &KEYS.encoding).map_err(|_| AppError::TokenCreation)
+}
+
+pub fn make_centrifugo_subscribe_token(user_id: &str, channel: &str) -> Result<String, AppError> {
+    let exp = (Utc::now() + Duration::hours(2)).timestamp();
+    let claims = CentrifugoSubscribeClaims {
+        sub: user_id.to_string(),
+        channel: channel.to_string(),
+        exp,
+    };
+    encode(&Header::default(), &claims, &KEYS.encoding).map_err(|_| AppError::TokenCreation)
+}

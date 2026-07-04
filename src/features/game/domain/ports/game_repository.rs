@@ -7,7 +7,7 @@ use crate::{
     features::game::domain::model::{
         Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
         PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel,
-        MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation,
+        MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation, GamePlayerHandCardWithMedia,
     },
 };
 
@@ -16,6 +16,13 @@ pub trait GameRepository: Send + Sync {
     async fn find_game(&self, game_id: Uuid) -> Result<Option<Game>, AppError>;
     async fn get_players(&self, game_id: Uuid) -> Result<Vec<GamePlayer>, AppError>;
     async fn get_player_hand(&self, game_id: Uuid, user_id: Uuid) -> Result<Vec<GameCard>, AppError>;
+    async fn get_player_hand_with_media(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<GamePlayerHandCardWithMedia>, AppError>;
+
     async fn get_current_round(&self, game_id: Uuid) -> Result<Option<GameRound>, AppError>;
     async fn get_round(&self, round_id: Uuid) -> Result<Option<GameRound>, AppError>;
     async fn get_prompt_card(
@@ -40,6 +47,8 @@ pub trait GameRepository: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         host_id: Uuid,
         mode: GameMode,
+        max_rounds: i32,
+        hand_size: i32,
     ) -> Result<Game, AppError>;
 
     async fn add_selected_situation_pack(
@@ -104,7 +113,15 @@ pub trait GameRepository: Send + Sync {
         round_number: i32,
         prompt_situation_id: Option<Uuid>,
         prompt_meme_id: Option<Uuid>,
+        phase: RoundPhase,
     ) -> Result<GameRound, AppError>;
+
+    async fn activate_next_round(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        round_number: i32,
+    ) -> Result<(), AppError>;
 
     async fn check_player_hand_card(
         &self,
@@ -217,13 +234,7 @@ pub trait GameRepository: Send + Sync {
         new_round: i32,
     ) -> Result<(), AppError>;
 
-    async fn insert_centrifugo_outbox(
-        &self,
-        tx: &mut Transaction<'_, Postgres>,
-        method: &str,
-        payload: serde_json::Value,
-        partition: i32,
-    ) -> Result<(), AppError>;
+
 
     async fn insert_meme_pack(
         &self,
@@ -294,4 +305,69 @@ pub trait GameRepository: Send + Sync {
     async fn delete_pack_situation(&self, tx: &mut Transaction<'_, Postgres>, situation_id: Uuid) -> Result<(), AppError>;
 
     async fn validate_media_exists(&self, media_ids: &[i64]) -> Result<(), AppError>;
+
+    async fn start_game(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        started_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(), AppError>;
+
+    async fn insert_player_reserve(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+        draw_order: i32,
+        meme_id: Option<Uuid>,
+        situation_id: Option<Uuid>,
+    ) -> Result<(), AppError>;
+
+    async fn insert_content_lock(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        meme_id: Option<Uuid>,
+        situation_id: Option<Uuid>,
+    ) -> Result<(), AppError>;
+
+    async fn draw_reserve_card(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+        draw_order: i32,
+    ) -> Result<(), AppError>;
+
+    async fn update_game_settings(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        mode: GameMode,
+        max_rounds: i32,
+        hand_size: i32,
+    ) -> Result<(), AppError>;
+
+    async fn clear_selected_situation_packs(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<(), AppError>;
+
+    async fn clear_selected_meme_packs(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<(), AppError>;
+
+    async fn delete_game_content_locks(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<(), AppError>;
+
+    async fn is_meme_pack_locked(&self, pack_id: Uuid) -> Result<bool, AppError>;
+    async fn is_situation_pack_locked(&self, pack_id: Uuid) -> Result<bool, AppError>;
+    async fn is_meme_locked(&self, meme_id: Uuid) -> Result<bool, AppError>;
+    async fn is_situation_locked(&self, situation_id: Uuid) -> Result<bool, AppError>;
 }

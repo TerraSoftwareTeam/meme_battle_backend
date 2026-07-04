@@ -1,0 +1,38 @@
+{
+  "token_hmac_secret_key": "${CENTRIFUGO_TOKEN_HMAC_SECRET_KEY}",
+  "api_key": "${CENTRIFUGO_API_KEY}",
+
+  "admin": true,
+  "admin_password": "${CENTRIFUGO_ADMIN_PASSWORD}",
+  "admin_secret": "${CENTRIFUGO_ADMIN_SECRET}",
+
+  "user_subscribe_to_personal": true,
+  "user_personal_channel_namespace": "personal",
+
+  "namespaces": [
+    {
+      "name": "personal",
+      "presence": true,
+      "allow_subscribe_for_client": false,
+      "allow_publish_for_client": false,
+      "history_size": 0,
+      "history_ttl": "0s",
+      "force_push_join_leave": false,
+      "allow_history_for_client": false,
+      "allow_presence_for_client": false
+    },
+    {
+      "name": "game",
+      "presence": true,
+      "allow_subscribe_for_client": false,
+      "allow_publish_for_client": false,
+      "history_size": 100,
+      "history_ttl": "300s",
+      "force_recovery": true,
+      "force_positioning": true,
+      "force_push_join_leave": true,
+      "allow_history_for_client": true,
+      "allow_presence_for_client": true
+    }
+  ]
+}

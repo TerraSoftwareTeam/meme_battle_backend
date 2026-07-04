@@ -1,23 +1,25 @@
 use std::sync::Arc;
-use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
-    features::game::domain::{
-        model::{GameMode, GameStatus, RoundPhase},
-        ports::GameRepository,
+    features::game::{
+        application::ports::game_notification_sender::GameNotificationSender,
+        domain::{
+            model::{GameMode, GameStatus, RoundPhase},
+            ports::GameRepository,
+        },
     },
-    features::game::application::commands::outbox_helper::publish_event,
 };
 
 pub struct SubmitCardCommand {
     repo: Arc<dyn GameRepository>,
+    notification_sender: Arc<dyn GameNotificationSender>,
 }
 
 impl SubmitCardCommand {
-    pub fn new(repo: Arc<dyn GameRepository>) -> Self {
-        Self { repo }
+    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
+        Self { repo, notification_sender }
     }
 
     pub async fn execute(
@@ -94,38 +96,51 @@ impl SubmitCardCommand {
         }
 
         // 8. Increment version
-        let new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
+        let mut new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
 
         // 9. Publish event
-        publish_event(
-            self.repo.as_ref(),
-            &mut tx,
-            game_id,
-            new_version,
-            "CardSubmitted",
-            json!({
-                "round_id": round_id,
-                "user_id": user_id
-            }),
-        )
-        .await?;
-
-        if round_phase_changed {
-            publish_event(
-                self.repo.as_ref(),
+        self.repo
+            .insert_game_event(
                 &mut tx,
+                Uuid::new_v4(),
                 game_id,
                 new_version,
-                "RoundPhaseChanged",
-                json!({
+                "SubmissionReceived",
+                serde_json::json!({
                     "round_id": round_id,
-                    "phase": RoundPhase::Voting
+                    "user_id": user_id
                 }),
             )
             .await?;
+
+        self.notification_sender
+            .notify_submission_received(&mut tx, game_id, round_id, user_id, new_version)
+            .await?;
+
+        if round_phase_changed {
+            new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
+
+            self.repo
+                .insert_game_event(
+                    &mut tx,
+                    Uuid::new_v4(),
+                    game_id,
+                    new_version,
+                    "RoundPhaseChanged",
+                    serde_json::json!({
+                        "round_id": round_id,
+                        "phase": "voting"
+                    }),
+                )
+                .await?;
+
+            self.notification_sender
+                .notify_round_phase_changed(&mut tx, game_id, round_id, "voting".to_string(), new_version)
+                .await?;
         }
 
         tx.commit().await?;
         Ok(())
     }
 }
+

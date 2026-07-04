@@ -19,6 +19,10 @@ pub struct Config {
     pub hackclub_cdn_api_key: Option<String>,
 
     pub admin_user_ids: Vec<String>,
+    pub secret_seed_key: String,
+
+    pub centrifugo_api_url: String,
+    pub centrifugo_api_key: String,
 }
 
 #[derive(Debug, Error)]
@@ -53,10 +57,17 @@ impl Config {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
+            secret_seed_key: required_env("SECRET_SEED_KEY")?,
+
+            centrifugo_api_url: env::var("CENTRIFUGO_API_URL")
+                .unwrap_or_else(|_| "http://localhost:8000/api".to_string()),
+            centrifugo_api_key: env::var("CENTRIFUGO_API_KEY")
+                .unwrap_or_else(|_| "CHANGE_ME_API_KEY".to_string()),
         };
 
         validate_sensitive_env("JWT_SECRET_KEY")?;
         validate_sensitive_env("ARGON2_SECRET_KEY")?;
+        validate_sensitive_env("SECRET_SEED_KEY")?;
 
         info!(
             service_host = %config.service_host,

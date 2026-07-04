@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post, delete},
+    routing::{get, post, delete, patch},
     Router,
 };
 use utoipa::{
@@ -12,12 +12,12 @@ use crate::{
     common::app::state::AppState,
     features::game::{
         api::dto::{
-            CreateGameRequest, GameDto, GameStateDto, PlayerDto, ReadyRequest, RoundDto,
+            CreateGameRequest, UpdateGameRequest, GameDto, GameStateDto, PlayerDto, ReadyRequest, RoundDto,
             SubmitCardRequest, VoteRequest, CreateMemePackRequest, CreateMemePackResponse,
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
-            PackSituationDto, SituationPackDetailsResponse,
+            PackSituationDto, SituationPackDetailsResponse, WsTokenDto,
         },
         domain::model::{GameCard, GameMode, GameStatus, RoundPhase},
     },
@@ -26,6 +26,7 @@ use crate::{
 pub fn game_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handlers::create_game))
+        .route("/{id}", patch(handlers::update_game))
         .route("/packs/memes", post(handlers::create_meme_pack).get(handlers::list_meme_packs))
         .route("/packs/memes/{id}", get(handlers::get_meme_pack).patch(handlers::update_meme_pack).delete(handlers::delete_meme_pack))
         .route("/packs/memes/{id}/memes", post(handlers::add_memes_to_pack))
@@ -35,6 +36,7 @@ pub fn game_routes() -> Router<AppState> {
         .route("/packs/situations/{id}/situations", post(handlers::add_situations_to_pack))
         .route("/packs/situations/{id}/situations/{situation_id}", delete(handlers::delete_pack_situation))
         .route("/{id}/state", get(handlers::get_game_state))
+        .route("/{id}/ws-token", get(handlers::get_ws_token))
         .route("/{id}/join", post(handlers::join_game))
         .route("/{id}/ready", post(handlers::set_ready))
         .route("/{id}/start", post(handlers::start_game_session))
@@ -46,7 +48,9 @@ pub fn game_routes() -> Router<AppState> {
 #[openapi(
     paths(
         handlers::create_game,
+        handlers::update_game,
         handlers::get_game_state,
+        handlers::get_ws_token,
         handlers::join_game,
         handlers::set_ready,
         handlers::start_game_session,
@@ -74,6 +78,7 @@ pub fn game_routes() -> Router<AppState> {
         GameStateDto,
         GameCard,
         CreateGameRequest,
+        UpdateGameRequest,
         SubmitCardRequest,
         VoteRequest,
         ReadyRequest,
@@ -91,6 +96,7 @@ pub fn game_routes() -> Router<AppState> {
         SituationPackDto,
         PackSituationDto,
         SituationPackDetailsResponse,
+        WsTokenDto,
         GameMode,
         GameStatus,
         RoundPhase

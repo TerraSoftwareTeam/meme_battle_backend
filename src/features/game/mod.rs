@@ -8,11 +8,11 @@ pub use api::routes::{game_routes, GameApiDoc};
 
 // Re-export commands
 pub use application::commands::{
-    create_game::CreateGameCommand, join_game::JoinGameCommand, set_ready::SetReadyCommand,
-    start_game::StartGameCommand, submit_card::SubmitCardCommand, vote_card::VoteCardCommand,
-    create_meme_pack::CreateMemePackCommand,
-    meme_pack_commands::{UpdateMemePackCommand, DeleteMemePackCommand, AddMemesToPackCommand, DeletePackMemeCommand},
-    situation_pack_commands::{CreateSituationPackCommand, UpdateSituationPackCommand, DeleteSituationPackCommand, AddSituationsToPackCommand, DeletePackSituationCommand},
+    CreateGameCommand, JoinGameCommand, SetReadyCommand, StartGameCommand,
+    SubmitCardCommand, VoteCardCommand, CreateMemePackCommand, UpdateMemePackCommand,
+    DeleteMemePackCommand, AddMemesToPackCommand, DeletePackMemeCommand,
+    CreateSituationPackCommand, UpdateSituationPackCommand, DeleteSituationPackCommand,
+    AddSituationsToPackCommand, DeletePackSituationCommand, UpdateGameCommand,
 };
 
 // Re-export queries
@@ -20,6 +20,7 @@ pub use application::queries::{
     get_game_state::{GetGameStateQuery, GameStateResult},
     meme_pack_queries::{ListMemePacksQuery, GetMemePackQuery, MemePackQueryResult},
     situation_pack_queries::{ListSituationPacksQuery, GetSituationPackQuery, SituationPackQueryResult},
+    get_ws_token::{GetWsTokenQuery, WsTokenResult},
 };
 
 // Re-export domain models & repo port
@@ -27,13 +28,17 @@ pub use domain::{
     model::{
         ContentSafetyLevel, Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound,
         GameStatus, PlayerSubmissionState, RoundPhase, RoundSubmission, RoundVote,
-        MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation,
+        MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation, GamePlayerHandCardWithMedia,
     },
     ports::game_repository::GameRepository,
 };
 
+// Re-export application ports
+pub use application::ports::game_notification_sender::GameNotificationSender;
+pub use application::ports::game_token_generator::GameTokenGenerator;
+
 // Re-export infrastructure adapter
-pub use infra::adapters::game_repository_impl::GameRepositoryImpl;
+pub use infra::adapters::GameRepositoryImpl;
 
 use std::sync::Arc;
 
@@ -43,6 +48,7 @@ pub struct GameState {
     pub join_game: Arc<JoinGameCommand>,
     pub set_ready: Arc<SetReadyCommand>,
     pub start_game: Arc<StartGameCommand>,
+    pub update_game: Arc<UpdateGameCommand>,
     pub submit_card: Arc<SubmitCardCommand>,
     pub vote_card: Arc<VoteCardCommand>,
     pub get_game_state: Arc<GetGameStateQuery>,
@@ -60,6 +66,7 @@ pub struct GameState {
     pub get_meme_pack: Arc<GetMemePackQuery>,
     pub list_situation_packs: Arc<ListSituationPacksQuery>,
     pub get_situation_pack: Arc<GetSituationPackQuery>,
+    pub get_ws_token: Arc<GetWsTokenQuery>,
 }
 
 impl GameState {
@@ -68,6 +75,7 @@ impl GameState {
         join_game: Arc<JoinGameCommand>,
         set_ready: Arc<SetReadyCommand>,
         start_game: Arc<StartGameCommand>,
+        update_game: Arc<UpdateGameCommand>,
         submit_card: Arc<SubmitCardCommand>,
         vote_card: Arc<VoteCardCommand>,
         get_game_state: Arc<GetGameStateQuery>,
@@ -85,12 +93,14 @@ impl GameState {
         get_meme_pack: Arc<GetMemePackQuery>,
         list_situation_packs: Arc<ListSituationPacksQuery>,
         get_situation_pack: Arc<GetSituationPackQuery>,
+        get_ws_token: Arc<GetWsTokenQuery>,
     ) -> Self {
         Self {
             create_game,
             join_game,
             set_ready,
             start_game,
+            update_game,
             submit_card,
             vote_card,
             get_game_state,
@@ -108,6 +118,7 @@ impl GameState {
             get_meme_pack,
             list_situation_packs,
             get_situation_pack,
+            get_ws_token,
         }
     }
 }

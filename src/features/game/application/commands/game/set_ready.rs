@@ -4,20 +4,23 @@ use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
-    features::game::domain::{
-        model::GameStatus,
-        ports::GameRepository,
+    features::game::{
+        application::ports::game_notification_sender::GameNotificationSender,
+        domain::{
+            model::GameStatus,
+            ports::GameRepository,
+        },
     },
-    features::game::application::commands::outbox_helper::publish_event,
 };
 
 pub struct SetReadyCommand {
     repo: Arc<dyn GameRepository>,
+    notification_sender: Arc<dyn GameNotificationSender>,
 }
 
 impl SetReadyCommand {
-    pub fn new(repo: Arc<dyn GameRepository>) -> Self {
-        Self { repo }
+    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
+        Self { repo, notification_sender }
     }
 
     pub async fn execute(&self, user_id: Uuid, game_id: Uuid, is_ready: bool) -> Result<(), AppError> {
@@ -48,18 +51,25 @@ impl SetReadyCommand {
         let new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
 
         // Publish event
-        publish_event(
-            self.repo.as_ref(),
-            &mut tx,
-            game_id,
-            new_version,
-            "PlayerReady",
-            json!({
-                "user_id": user_id,
-                "is_ready": is_ready
-            }),
-        )
-        .await?;
+        let payload = json!({
+            "user_id": user_id,
+            "is_ready": is_ready
+        });
+
+        self.repo
+            .insert_game_event(
+                &mut tx,
+                Uuid::new_v4(),
+                game_id,
+                new_version,
+                "PlayerReadyChanged",
+                payload,
+            )
+            .await?;
+
+        self.notification_sender
+            .notify_player_ready_changed(&mut tx, game_id, user_id, is_ready, new_version)
+            .await?;
 
         tx.commit().await?;
         Ok(())

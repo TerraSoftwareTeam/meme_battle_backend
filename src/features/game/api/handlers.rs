@@ -7,16 +7,17 @@ use uuid::Uuid;
 
 use crate::{
     common::{
+        app::state::AppState,
         http::{current_user::CurrentUser, dto::RestApiResponse, error::AppError},
     },
     features::game::{
         api::dto::{
-            CreateGameRequest, ReadyRequest, SubmitCardRequest, VoteRequest, GameDto,
+            CreateGameRequest, UpdateGameRequest, ReadyRequest, SubmitCardRequest, VoteRequest, GameDto,
             GameStateDto, PlayerDto, RoundDto, CreateMemePackRequest, CreateMemePackResponse,
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
-            PackSituationDto, SituationPackDetailsResponse,
+            PackSituationDto, SituationPackDetailsResponse, WsTokenDto,
         },
         GameState,
     },
@@ -42,8 +43,44 @@ pub async fn create_game(
         .execute(
             user_id,
             payload.mode,
-            payload.situation_pack_ids,
-            payload.meme_pack_ids,
+            payload.selected_situation_pack_ids,
+            payload.selected_meme_pack_ids,
+            payload.max_rounds,
+            payload.hand_size,
+        )
+        .await?;
+
+    Ok(RestApiResponse::success(GameDto::from(game)))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/games/{id}",
+    request_body = UpdateGameRequest,
+    responses((status = 200, description = "Update game settings", body = GameDto)),
+    tag = "Games"
+)]
+pub async fn update_game(
+    State(state): State<GameState>,
+    current_user: CurrentUser,
+    Path(id_str): Path<String>,
+    Json(payload): Json<UpdateGameRequest>,
+) -> Result<impl IntoResponse, AppError> {
+    let user_id = Uuid::parse_str(&current_user.user_id)
+        .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
+    let game_id = Uuid::parse_str(&id_str)
+        .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
+
+    let game = state
+        .update_game
+        .execute(
+            user_id,
+            game_id,
+            payload.mode,
+            payload.selected_situation_pack_ids,
+            payload.selected_meme_pack_ids,
+            payload.max_rounds,
+            payload.hand_size,
         )
         .await?;
 
@@ -86,12 +123,12 @@ pub async fn get_game_state(
 }
 
 #[utoipa::path(
-    post,
-    path = "/games/{id}/join",
-    responses((status = 200, description = "Join the game lobby")),
+    get,
+    path = "/games/{id}/ws-token",
+    responses((status = 200, description = "Get Centrifugo WebSocket connection and subscription tokens", body = WsTokenDto)),
     tag = "Games"
 )]
-pub async fn join_game(
+pub async fn get_ws_token(
     State(state): State<GameState>,
     current_user: CurrentUser,
     Path(id_str): Path<String>,
@@ -101,7 +138,28 @@ pub async fn join_game(
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
 
-    state.join_game.execute(user_id, id).await?;
+    let res = state.get_ws_token.execute(user_id, id).await?;
+    Ok(RestApiResponse::success(WsTokenDto::from(res)))
+}
+
+#[utoipa::path(
+    post,
+    path = "/games/{id}/join",
+    responses((status = 200, description = "Join the game lobby")),
+    tag = "Games"
+)]
+pub async fn join_game(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Path(id_str): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let user_id = Uuid::parse_str(&current_user.user_id)
+        .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
+    let id = Uuid::parse_str(&id_str)
+        .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
+
+    state.game.join_game.execute(user_id, id).await?;
+
     Ok(RestApiResponse::success_with_message("Joined successfully".to_string(), ()))
 }
 
@@ -113,7 +171,7 @@ pub async fn join_game(
     tag = "Games"
 )]
 pub async fn set_ready(
-    State(state): State<GameState>,
+    State(state): State<AppState>,
     current_user: CurrentUser,
     Path(id_str): Path<String>,
     Json(payload): Json<ReadyRequest>,
@@ -123,7 +181,8 @@ pub async fn set_ready(
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
 
-    state.set_ready.execute(user_id, id, payload.is_ready).await?;
+    state.game.set_ready.execute(user_id, id, payload.is_ready).await?;
+
     Ok(RestApiResponse::success_with_message("Readiness updated".to_string(), ()))
 }
 
@@ -134,7 +193,7 @@ pub async fn set_ready(
     tag = "Games"
 )]
 pub async fn start_game_session(
-    State(state): State<GameState>,
+    State(state): State<AppState>,
     current_user: CurrentUser,
     Path(id_str): Path<String>,
 ) -> Result<RestApiResponse<()>, AppError> {
@@ -143,7 +202,8 @@ pub async fn start_game_session(
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
 
-    state.start_game.execute(user_id, id).await?;
+    state.game.start_game.execute(user_id, id).await?;
+
     Ok(RestApiResponse::success_with_message("Game started successfully".to_string(), ()))
 }
 
@@ -155,7 +215,7 @@ pub async fn start_game_session(
     tag = "Games"
 )]
 pub async fn submit_card(
-    State(state): State<GameState>,
+    State(state): State<AppState>,
     current_user: CurrentUser,
     Path((id_str, round_id_str)): Path<(String, String)>,
     Json(payload): Json<SubmitCardRequest>,
@@ -168,6 +228,7 @@ pub async fn submit_card(
         .map_err(|_| AppError::ValidationError("Invalid round ID".to_string()))?;
 
     state
+        .game
         .submit_card
         .execute(user_id, id, round_id, payload.card_id)
         .await?;
@@ -183,7 +244,7 @@ pub async fn submit_card(
     tag = "Games"
 )]
 pub async fn vote_card(
-    State(state): State<GameState>,
+    State(state): State<AppState>,
     current_user: CurrentUser,
     Path((id_str, round_id_str)): Path<(String, String)>,
     Json(payload): Json<VoteRequest>,
@@ -196,6 +257,7 @@ pub async fn vote_card(
         .map_err(|_| AppError::ValidationError("Invalid round ID".to_string()))?;
 
     state
+        .game
         .vote_card
         .execute(user_id, id, round_id, payload.submission_id)
         .await?;

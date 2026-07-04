@@ -1,0 +1,167 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/terrasoftwareteam/meme_battle_backend/app
+          tags: |
+            type=sha,format=short
+
+      - name: Build and push x86_64 image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: [self-hosted, hackclub]
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Prepare deploy directory
+        run: |
+          mkdir -p /home/deployer/meme_battle_backend
+          test -f docker-compose.yml
+
+      - name: Sync deploy files
+        run: |
+          cp docker-compose.yml /home/deployer/meme_battle_backend/docker-compose.yml
+
+          if [ -d migrations ]; then
+            rm -rf /home/deployer/meme_battle_backend/migrations
+            cp -r migrations /home/deployer/meme_battle_backend/migrations
+          fi
+
+          if [ -d centrifuge ]; then
+            rm -rf /home/deployer/meme_battle_backend/centrifuge
+            cp -r centrifuge /home/deployer/meme_battle_backend/centrifuge
+          fi
+
+      - name: Debug deploy directory
+        run: |
+          ls -la /home/deployer/meme_battle_backend
+          test -f /home/deployer/meme_battle_backend/docker-compose.yml
+
+      - name: Write production .env
+        working-directory: /home/deployer/meme_battle_backend
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          HMAC_SECRET_KEY: ${{ secrets.HMAC_SECRET_KEY }}
+          ARGON2_SECRET_KEY: ${{ secrets.ARGON2_SECRET_KEY }}
+          SECRET_SEED_KEY: ${{ secrets.SECRET_SEED_KEY }}
+          HACKCLUB_CDN_API_KEY: ${{ secrets.HACKCLUB_CDN_API_KEY }}
+
+          CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${{ secrets.CENTRIFUGO_TOKEN_HMAC_SECRET_KEY }}
+          CENTRIFUGO_API_KEY: ${{ secrets.CENTRIFUGO_API_KEY }}
+          CENTRIFUGO_ADMIN_PASSWORD: ${{ secrets.CENTRIFUGO_ADMIN_PASSWORD }}
+          CENTRIFUGO_ADMIN_SECRET: ${{ secrets.CENTRIFUGO_ADMIN_SECRET }}
+
+          APP_EXTERNAL_PORT: ${{ vars.APP_EXTERNAL_PORT || '8081' }}
+          POSTGRES_EXTERNAL_PORT: ${{ vars.POSTGRES_EXTERNAL_PORT || '5435' }}
+          DATABASE_MAX_CONNECTIONS: ${{ vars.DATABASE_MAX_CONNECTIONS || '5' }}
+          DATABASE_MIN_CONNECTIONS: ${{ vars.DATABASE_MIN_CONNECTIONS || '1' }}
+          CENTRIFUGO_API_URL: ${{ vars.CENTRIFUGO_API_URL || 'http://centrifugo:8000/api' }}
+          RUST_LOG: ${{ vars.RUST_LOG || 'info,sqlx=debug,tower_http=info,axum::rejection=trace,opentelemetry=info' }}
+        run: |
+          # Verification of Required Secrets
+          : "${POSTGRES_USER:?POSTGRES_USER secret is required}"
+          : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD secret is required}"
+          : "${POSTGRES_DB:?POSTGRES_DB secret is required}"
+          : "${JWT_SECRET_KEY:?JWT_SECRET_KEY secret is required}"
+          : "${HMAC_SECRET_KEY:?HMAC_SECRET_KEY secret is required}"
+          : "${ARGON2_SECRET_KEY:?ARGON2_SECRET_KEY secret is required}"
+          : "${SECRET_SEED_KEY:?SECRET_SEED_KEY secret is required}"
+          : "${HACKCLUB_CDN_API_KEY:?HACKCLUB_CDN_API_KEY secret is required}"
+          : "${CENTRIFUGO_TOKEN_HMAC_SECRET_KEY:?CENTRIFUGO_TOKEN_HMAC_SECRET_KEY secret is required}"
+          : "${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY secret is required}"
+          : "${CENTRIFUGO_ADMIN_PASSWORD:?CENTRIFUGO_ADMIN_PASSWORD secret is required}"
+          : "${CENTRIFUGO_ADMIN_SECRET:?CENTRIFUGO_ADMIN_SECRET secret is required}"
+
+          SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
+
+          # Writing to a file
+          cat > .env <<EOF
+          APP_IMAGE_TAG=sha-${SHORT_SHA}
+
+          JWT_SECRET_KEY=${JWT_SECRET_KEY}
+          HMAC_SECRET_KEY=${HMAC_SECRET_KEY}
+          ARGON2_SECRET_KEY=${ARGON2_SECRET_KEY}
+          SECRET_SEED_KEY=${SECRET_SEED_KEY}
+          HACKCLUB_CDN_API_KEY=${HACKCLUB_CDN_API_KEY}
+
+          APP_EXTERNAL_PORT=${APP_EXTERNAL_PORT}
+          POSTGRES_EXTERNAL_PORT=${POSTGRES_EXTERNAL_PORT}
+
+          POSTGRES_USER=${POSTGRES_USER}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          POSTGRES_DB=${POSTGRES_DB}
+          DATABASE_MAX_CONNECTIONS=${DATABASE_MAX_CONNECTIONS}
+          DATABASE_MIN_CONNECTIONS=${DATABASE_MIN_CONNECTIONS}
+
+          CENTRIFUGO_TOKEN_HMAC_SECRET_KEY=${CENTRIFUGO_TOKEN_HMAC_SECRET_KEY}
+          CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
+          CENTRIFUGO_ADMIN_PASSWORD=${CENTRIFUGO_ADMIN_PASSWORD}
+          CENTRIFUGO_ADMIN_SECRET=${CENTRIFUGO_ADMIN_SECRET}
+          CENTRIFUGO_API_URL=${CENTRIFUGO_API_URL}
+
+          RUST_LOG=${RUST_LOG}
+
+          OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+          OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+          EOF
+
+          chmod 600 .env
+
+      - name: Login to GHCR with GITHUB_TOKEN
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Pull new image
+        run: docker compose -f /home/deployer/meme_battle_backend/docker-compose.yml pull
+
+      - name: Restart app
+        run: docker compose -f /home/deployer/meme_battle_backend/docker-compose.yml up -d

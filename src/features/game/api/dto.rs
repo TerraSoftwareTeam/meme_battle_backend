@@ -60,11 +60,36 @@ pub struct GameStateDto {
     pub my_hand: Vec<GameCard>,
 }
 
+fn default_max_rounds() -> i32 {
+    3
+}
+
+fn default_hand_size() -> i32 {
+    5
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct CreateGameRequest {
     pub mode: GameMode,
-    pub situation_pack_ids: Vec<Uuid>,
-    pub meme_pack_ids: Vec<Uuid>,
+    #[serde(rename = "selected_situation_pack_ids", alias = "situation_pack_ids")]
+    pub selected_situation_pack_ids: Vec<Uuid>,
+    #[serde(rename = "selected_meme_pack_ids", alias = "meme_pack_ids")]
+    pub selected_meme_pack_ids: Vec<Uuid>,
+    #[serde(default = "default_max_rounds")]
+    pub max_rounds: i32,
+    #[serde(default = "default_hand_size")]
+    pub hand_size: i32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
+pub struct UpdateGameRequest {
+    pub mode: Option<GameMode>,
+    #[serde(default, rename = "selected_situation_pack_ids", alias = "situation_pack_ids")]
+    pub selected_situation_pack_ids: Option<Vec<Uuid>>,
+    #[serde(default, rename = "selected_meme_pack_ids", alias = "meme_pack_ids")]
+    pub selected_meme_pack_ids: Option<Vec<Uuid>>,
+    pub max_rounds: Option<i32>,
+    pub hand_size: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
@@ -241,6 +266,23 @@ impl From<PackSituation> for PackSituationDto {
 pub struct SituationPackDetailsResponse {
     pub pack: SituationPackDto,
     pub situations: Vec<PackSituationDto>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
+pub struct WsTokenDto {
+    pub connection_token: String,
+    pub game_subscription_token: String,
+    pub personal_subscription_token: String,
+}
+
+impl From<crate::features::game::WsTokenResult> for WsTokenDto {
+    fn from(res: crate::features::game::WsTokenResult) -> Self {
+        Self {
+            connection_token: res.connection_token,
+            game_subscription_token: res.game_subscription_token,
+            personal_subscription_token: res.personal_subscription_token,
+        }
+    }
 }
 
 

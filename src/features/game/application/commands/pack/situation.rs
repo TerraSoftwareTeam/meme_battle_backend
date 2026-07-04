@@ -114,6 +114,10 @@ impl DeleteSituationPackCommand {
             return Err(AppError::Forbidden("Only pack author can delete it".to_string()));
         }
 
+        if self.repo.is_situation_pack_locked(pack_id).await? {
+            return Err(AppError::Conflict("Situation pack is currently in use by an active game session".to_string()));
+        }
+
         let mut tx = self.repo.begin().await?;
         self.repo.delete_situation_pack(&mut tx, pack_id).await?;
         tx.commit().await?;
@@ -172,6 +176,10 @@ impl DeletePackSituationCommand {
 
         if pack.author_id != author_id {
             return Err(AppError::Forbidden("Only pack author can delete situations from it".to_string()));
+        }
+
+        if self.repo.is_situation_locked(situation_id).await? {
+            return Err(AppError::Conflict("Situation is currently in use by an active game session".to_string()));
         }
 
         let mut tx = self.repo.begin().await?;

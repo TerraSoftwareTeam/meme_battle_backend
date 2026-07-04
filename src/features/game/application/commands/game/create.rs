@@ -8,7 +8,7 @@ use crate::{
         model::{Game, GameMode},
         ports::GameRepository,
     },
-    features::game::application::commands::outbox_helper::publish_event,
+
 };
 
 pub struct CreateGameCommand {
@@ -26,11 +26,13 @@ impl CreateGameCommand {
         mode: GameMode,
         situation_pack_ids: Vec<Uuid>,
         meme_pack_ids: Vec<Uuid>,
+        max_rounds: i32,
+        hand_size: i32,
     ) -> Result<Game, AppError> {
         let mut tx = self.repo.begin().await?;
 
         // 1. Create Game
-        let game = self.repo.create_game(&mut tx, creator_id, mode).await?;
+        let game = self.repo.create_game(&mut tx, creator_id, mode, max_rounds, hand_size).await?;
 
         // 2. Select Packs
         for pack_id in situation_pack_ids {
@@ -47,10 +49,10 @@ impl CreateGameCommand {
         // 3. Add Host as Player (default ready since they are starting)
         self.repo.add_player(&mut tx, game.id, creator_id, true).await?;
 
-        // 4. Publish Event
-        publish_event(
-            self.repo.as_ref(),
+        // 4. Insert GameCreated event in event store
+        self.repo.insert_game_event(
             &mut tx,
+            Uuid::new_v4(),
             game.id,
             game.version,
             "GameCreated",

@@ -26,8 +26,8 @@ use meme_battle_backend::{
             AddMemesToPackRequest, AddSituationsToPackRequest, CreateGameRequest,
             CreateMemePackRequest, CreateMemePackResponse, CreateSituationPackRequest,
             CreateSituationPackResponse, GameDto, GameStateDto, MemePackDetailsResponse,
-            ReadyRequest, SituationPackDetailsResponse, SubmitCardRequest, UpdateMemePackRequest,
-            UpdateSituationPackRequest, VoteRequest,
+            ReadyRequest, SituationPackDetailsResponse, SubmitCardRequest, UpdateGameRequest,
+            UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest,
         },
         ContentSafetyLevel, GameCard, GameMode, RoundPhase,
     },
@@ -112,6 +112,19 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         .unwrap()
         .to_string();
 
+    let (status3, bytes3) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    assert_eq!(status3, StatusCode::OK);
+    let auth_resp3: RestApiResponse<Value> = serde_json::from_slice(&bytes3).unwrap();
+    let token3 = auth_resp3
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
     // Decode token IDs using KEY decoding
     let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
         .unwrap()
@@ -123,8 +136,13 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         .claims;
     let user_id2 = Uuid::parse_str(&claims2.sub).unwrap();
 
-    // Insert 12 dummy media assets in DB for memes using sqlx
-    for id in 2001..=2012 {
+    let claims3 = decode::<Claims>(&token3, &KEYS.decoding, &Validation::default())
+        .unwrap()
+        .claims;
+    let user_id3 = Uuid::parse_str(&claims3.sub).unwrap();
+
+    // Insert 24 dummy media assets in DB for memes using sqlx
+    for id in 2001..=2024 {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
@@ -147,7 +165,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         language_code: "ru".to_string(),
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false, // private pack
-        media_ids: (2001..=2012).collect(),
+        media_ids: (2001..=2024).collect(),
     };
 
     let (status_create_meme, bytes_create_meme) = send_request(
@@ -247,8 +265,10 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     // 5. Create Game
     let create_game_payload = CreateGameRequest {
         mode: GameMode::SituationToMeme,
-        situation_pack_ids: vec![sit_pack_id],
-        meme_pack_ids: vec![meme_pack_id],
+        selected_situation_pack_ids: vec![sit_pack_id],
+        selected_meme_pack_ids: vec![meme_pack_id],
+        max_rounds: 3,
+        hand_size: 5,
     };
 
     let (status_create_game, bytes_create_game) = send_request(
@@ -273,6 +293,16 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     )
     .await;
     assert_eq!(join_status, StatusCode::OK);
+
+    let (join_status3, _) = send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game_id),
+        Some(&token3),
+        None,
+    )
+    .await;
+    assert_eq!(join_status3, StatusCode::OK);
 
     // Vulnerability Fix Verification: Duplicate Join Event Spam
     // Trying to join again should yield 409 Conflict
@@ -299,7 +329,15 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     .await;
     assert_eq!(ready_blocked_status, StatusCode::NOT_FOUND);
 
-    // Lobby player ready toggling (Player 2 ready)
+    // Lobby players ready toggling (Player 2, Player 3 ready)
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game_id),
+        Some(&token1),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
     let (ready_status, _) = send_request(
         &app,
         Method::POST,
@@ -309,6 +347,14 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     )
     .await;
     assert_eq!(ready_status, StatusCode::OK);
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game_id),
+        Some(&token3),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
 
     // 8. Start Game
     let (start_status, _) = send_request::<()>(
@@ -370,7 +416,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         GameCard::Situation { id, .. } => *id,
     };
 
-    // Player 2 submits card (should transition round to Voting)
+    // Player 2 submits card
     let (submit_status2, _) = send_request(
         &app,
         Method::POST,
@@ -380,6 +426,35 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     )
     .await;
     assert_eq!(submit_status2, StatusCode::OK);
+
+    // Fetch Player 3's hand using their token
+    let (state_status3, state_bytes3) = send_request::<()>(
+        &app,
+        Method::GET,
+        &format!("/games/{}/state", game_id),
+        Some(&token3),
+        None,
+    )
+    .await;
+    assert_eq!(state_status3, StatusCode::OK);
+    let state_dto3: RestApiResponse<GameStateDto> = serde_json::from_slice(&state_bytes3).unwrap();
+    let game_state_data3 = state_dto3.0.data.unwrap();
+
+    let card3_id = match &game_state_data3.my_hand[0] {
+        GameCard::Meme { id, .. } => *id,
+        GameCard::Situation { id, .. } => *id,
+    };
+
+    // Player 3 submits card (transitions round to Voting)
+    let (submit_status3, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        Some(&token3),
+        Some(&SubmitCardRequest { card_id: card3_id }),
+    )
+    .await;
+    assert_eq!(submit_status3, StatusCode::OK);
 
     // 10. Play Round: Vote
     // Get round voting details (submissions list)
@@ -406,7 +481,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         .fetch_all(&pool)
         .await
         .unwrap();
-    assert_eq!(submissions.len(), 2);
+    assert_eq!(submissions.len(), 3);
 
     // Find submission IDs
     let sub1 = submissions
@@ -417,6 +492,11 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let sub2 = submissions
         .iter()
         .find(|s| s.get::<Uuid, _>("user_id") == user_id2)
+        .unwrap()
+        .get::<Uuid, _>("id");
+    let sub3 = submissions
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id3)
         .unwrap()
         .get::<Uuid, _>("id");
 
@@ -433,18 +513,31 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     .await;
     assert_eq!(vote_status1, StatusCode::OK);
 
-    // Player 2 votes for Player 1's submission (round ends, winner set, new round created or lobby/ended)
+    // Player 2 votes for Player 3's submission
     let (vote_status2, _) = send_request(
         &app,
         Method::POST,
         &format!("/games/{}/rounds/{}/vote", game_id, round_id),
         Some(&token2),
         Some(&VoteRequest {
-            submission_id: sub1,
+            submission_id: sub3,
         }),
     )
     .await;
     assert_eq!(vote_status2, StatusCode::OK);
+
+    // Player 3 votes for Player 1's submission (round ends)
+    let (vote_status3, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        Some(&token3),
+        Some(&VoteRequest {
+            submission_id: sub1,
+        }),
+    )
+    .await;
+    assert_eq!(vote_status3, StatusCode::OK);
 
     // Get final state
     let (final_status, final_bytes) = send_request::<()>(
@@ -827,7 +920,7 @@ async fn test_duplicate_pack_item_returns_conflict() {
     let user_id = Uuid::parse_str(&claims.sub).unwrap();
 
     // Seed a real media asset
-    let media_id: i64 = 7777_001;
+    let media_id: i64 = 7_777_001;
     sqlx::query(
         "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
          VALUES ($1, $2, 'hackclub_cdn', 'prov_dup_test', 'https://example.com/dup.png', 'dup.png', 'image/png', 1024, 'pending', 'private')
@@ -849,13 +942,22 @@ async fn test_duplicate_pack_item_returns_conflict() {
         is_public: false,
         media_ids: vec![media_id],
     };
-    let (cs, cb) = send_request(&app, Method::POST, "/games/packs/memes", Some(&token), Some(&create_payload)).await;
+    let (cs, cb) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/memes",
+        Some(&token),
+        Some(&create_payload),
+    )
+    .await;
     assert_eq!(cs, StatusCode::OK);
     let pack_resp: RestApiResponse<CreateMemePackResponse> = serde_json::from_slice(&cb).unwrap();
     let pack_id = pack_resp.0.data.unwrap().id;
 
     // Try adding the SAME media again — must be 409
-    let add_dup = AddMemesToPackRequest { media_ids: vec![media_id] };
+    let add_dup = AddMemesToPackRequest {
+        media_ids: vec![media_id],
+    };
     let (dup_status, dup_bytes) = send_request(
         &app,
         Method::POST,
@@ -866,18 +968,22 @@ async fn test_duplicate_pack_item_returns_conflict() {
     .await;
 
     assert_eq!(
-        dup_status, StatusCode::CONFLICT,
+        dup_status,
+        StatusCode::CONFLICT,
         "Expected 409 Conflict for duplicate meme, got {} — body: {}",
-        dup_status, String::from_utf8_lossy(&dup_bytes),
+        dup_status,
+        String::from_utf8_lossy(&dup_bytes),
     );
     let dup_body = String::from_utf8_lossy(&dup_bytes);
     assert!(
         dup_body.contains("already in this pack"),
-        "Body should say 'already in this pack', got: {}", dup_body,
+        "Body should say 'already in this pack', got: {}",
+        dup_body,
     );
     assert!(
         !dup_body.contains("foreign key constraint") && !dup_body.contains("unique constraint"),
-        "Must not expose raw DB errors, got: {}", dup_body,
+        "Must not expose raw DB errors, got: {}",
+        dup_body,
     );
 
     // ── 2. SITUATION PACK duplicate ────────────────────────────────────
@@ -890,13 +996,23 @@ async fn test_duplicate_pack_item_returns_conflict() {
         is_public: false,
         prompts: vec![prompt.clone()],
     };
-    let (ss, sb) = send_request(&app, Method::POST, "/games/packs/situations", Some(&token), Some(&sit_create)).await;
+    let (ss, sb) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/situations",
+        Some(&token),
+        Some(&sit_create),
+    )
+    .await;
     assert_eq!(ss, StatusCode::OK);
-    let sit_resp: RestApiResponse<CreateSituationPackResponse> = serde_json::from_slice(&sb).unwrap();
+    let sit_resp: RestApiResponse<CreateSituationPackResponse> =
+        serde_json::from_slice(&sb).unwrap();
     let sit_pack_id = sit_resp.0.data.unwrap().id;
 
     // Try adding the SAME prompt again — must be 409
-    let add_dup_sit = AddSituationsToPackRequest { prompts: vec![prompt.clone()] };
+    let add_dup_sit = AddSituationsToPackRequest {
+        prompts: vec![prompt.clone()],
+    };
     let (dup_sit_status, dup_sit_bytes) = send_request(
         &app,
         Method::POST,
@@ -907,17 +1023,856 @@ async fn test_duplicate_pack_item_returns_conflict() {
     .await;
 
     assert_eq!(
-        dup_sit_status, StatusCode::CONFLICT,
+        dup_sit_status,
+        StatusCode::CONFLICT,
         "Expected 409 Conflict for duplicate situation, got {} — body: {}",
-        dup_sit_status, String::from_utf8_lossy(&dup_sit_bytes),
+        dup_sit_status,
+        String::from_utf8_lossy(&dup_sit_bytes),
     );
     let dup_sit_body = String::from_utf8_lossy(&dup_sit_bytes);
     assert!(
         dup_sit_body.contains("already exists in this pack"),
-        "Body should say 'already exists in this pack', got: {}", dup_sit_body,
+        "Body should say 'already exists in this pack', got: {}",
+        dup_sit_body,
     );
 
     // Cleanup
-    sqlx::query("DELETE FROM meme_packs WHERE id = $1").bind(pack_id).execute(&pool).await.unwrap();
-    sqlx::query("DELETE FROM situation_packs WHERE id = $1").bind(sit_pack_id).execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM meme_packs WHERE id = $1")
+        .bind(pack_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM situation_packs WHERE id = $1")
+        .bind(sit_pack_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_game_start_deterministic_and_precomputes() {
+    let (pool, app) = setup_db_and_router().await;
+
+    // Create 3 guest users
+    let (_s1, b1) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let token1 = serde_json::from_slice::<RestApiResponse<Value>>(&b1)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (_s2, b2) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let token2 = serde_json::from_slice::<RestApiResponse<Value>>(&b2)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (_s3, b3) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let token3 = serde_json::from_slice::<RestApiResponse<Value>>(&b3)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+        .unwrap()
+        .claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
+
+    // Insert 20 dummy media assets for memes (insufficient for 3 players, hand size 5, rounds 3, which needs 24 memes)
+    for id in 3001..=3020 {
+        sqlx::query(
+            "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
+             VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
+             ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(id as i64)
+        .bind(user_id1)
+        .bind(format!("prov_id_{}", id))
+        .bind(format!("https://example.com/{}.png", id))
+        .bind(format!("meme_{}.png", id))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    // Create Meme Pack with 20 memes
+    let meme_create = CreateMemePackRequest {
+        name: "Deterministic Test Memes".to_string(),
+        description: None,
+        language_code: "ru".to_string(),
+        safety_level: ContentSafetyLevel::FamilyFriendly,
+        is_public: false,
+        media_ids: (3001..=3020).collect(),
+    };
+    let (sm, bm) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/memes",
+        Some(&token1),
+        Some(&meme_create),
+    )
+    .await;
+    assert_eq!(sm, StatusCode::OK);
+    let meme_pack_resp: RestApiResponse<CreateMemePackResponse> =
+        serde_json::from_slice(&bm).unwrap();
+    let meme_pack_id = meme_pack_resp.0.data.unwrap().id;
+
+    // Create Situation Pack with 5 situations
+    let sit_create = CreateSituationPackRequest {
+        name: "Deterministic Test Situations".to_string(),
+        description: None,
+        language_code: "ru".to_string(),
+        safety_level: ContentSafetyLevel::FamilyFriendly,
+        is_public: false,
+        prompts: vec![
+            "Sit 1".to_string(),
+            "Sit 2".to_string(),
+            "Sit 3".to_string(),
+            "Sit 4".to_string(),
+            "Sit 5".to_string(),
+        ],
+    };
+    let (ss, sb) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/situations",
+        Some(&token1),
+        Some(&sit_create),
+    )
+    .await;
+    assert_eq!(ss, StatusCode::OK);
+    let sit_resp: RestApiResponse<CreateSituationPackResponse> =
+        serde_json::from_slice(&sb).unwrap();
+    let sit_pack_id = sit_resp.0.data.unwrap().id;
+
+    // Create Game
+    let create_game_payload = CreateGameRequest {
+        mode: GameMode::SituationToMeme,
+        selected_situation_pack_ids: vec![sit_pack_id],
+        selected_meme_pack_ids: vec![meme_pack_id],
+        max_rounds: 3,
+        hand_size: 5,
+    };
+    let (sg, bg) = send_request(
+        &app,
+        Method::POST,
+        "/games",
+        Some(&token1),
+        Some(&create_game_payload),
+    )
+    .await;
+    assert_eq!(sg, StatusCode::OK);
+    let game_resp: RestApiResponse<GameDto> = serde_json::from_slice(&bg).unwrap();
+    let game_id = game_resp.0.data.unwrap().id;
+
+    // Players join
+    let (sj, _) = send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game_id),
+        Some(&token2),
+        None,
+    )
+    .await;
+    assert_eq!(sj, StatusCode::OK);
+    let (sj3, _) = send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game_id),
+        Some(&token3),
+        None,
+    )
+    .await;
+    assert_eq!(sj3, StatusCode::OK);
+
+    // All players ready
+    let (sr1, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game_id),
+        Some(&token1),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+    assert_eq!(sr1, StatusCode::OK);
+    let (sr2, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game_id),
+        Some(&token2),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+    assert_eq!(sr2, StatusCode::OK);
+    let (sr3, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game_id),
+        Some(&token3),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+    assert_eq!(sr3, StatusCode::OK);
+
+    // Try starting the game -> should fail with 400 Validation Error "not_enough_memes"
+    let (sstart, bstart) = send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/start", game_id),
+        Some(&token1),
+        None,
+    )
+    .await;
+    assert_eq!(sstart, StatusCode::BAD_REQUEST);
+    let err_msg = String::from_utf8_lossy(&bstart);
+    assert!(
+        err_msg.contains("not_enough_memes"),
+        "Expected error 'not_enough_memes', got: {}",
+        err_msg
+    );
+
+    // Now insert 4 more memes to make it 24 memes
+    for id in 3021..=3024 {
+        sqlx::query(
+            "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
+             VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
+             ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(id as i64)
+        .bind(user_id1)
+        .bind(format!("prov_id_{}", id))
+        .bind(format!("https://example.com/{}.png", id))
+        .bind(format!("meme_{}.png", id))
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let add_payload = AddMemesToPackRequest {
+            media_ids: vec![id as i64],
+        };
+        send_request(
+            &app,
+            Method::POST,
+            &format!("/games/packs/memes/{}/memes", meme_pack_id),
+            Some(&token1),
+            Some(&add_payload),
+        )
+        .await;
+    }
+
+    // Now start the game -> should succeed with 200 OK
+    let (sstart2, _) = send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/start", game_id),
+        Some(&token1),
+        None,
+    )
+    .await;
+    assert_eq!(sstart2, StatusCode::OK);
+
+    // Check game status, started_at
+    let game_row = sqlx::query(
+        "SELECT status::TEXT AS status, started_at, hand_size, max_rounds FROM games WHERE id = $1",
+    )
+    .bind(game_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(game_row.get::<String, _>("status"), "playing");
+    assert!(game_row
+        .try_get::<chrono::DateTime<chrono::Utc>, _>("started_at")
+        .is_ok());
+
+    // Check that exactly max_rounds (3) game rounds were created
+    let rounds = sqlx::query("SELECT round_number, prompt_situation_id, phase::TEXT AS phase FROM game_rounds WHERE game_id = $1 ORDER BY round_number")
+        .bind(game_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rounds.len(), 3);
+    assert_eq!(rounds[0].get::<String, _>("phase"), "submitting");
+    assert_eq!(rounds[1].get::<String, _>("phase"), "waiting");
+    assert_eq!(rounds[2].get::<String, _>("phase"), "waiting");
+
+    // Check that game player hand has hand_size (5) cards for each player
+    let hands_count = sqlx::query("SELECT COUNT(*) FROM game_player_hand WHERE game_id = $1")
+        .bind(game_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<i64, _>(0);
+    assert_eq!(hands_count, 15); // 3 players * 5 cards
+
+    // Check that game player reserve has max_rounds (3) cards for each player
+    let reserve_count = sqlx::query("SELECT COUNT(*) FROM game_player_reserve WHERE game_id = $1")
+        .bind(game_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<i64, _>(0);
+    assert_eq!(reserve_count, 9); // 3 players * 3 reserve cards
+
+    // Check that all selected cards (3 situations + 24 memes = 27 items) are locked in game_content_locks
+    let locks_count = sqlx::query("SELECT COUNT(*) FROM game_content_locks WHERE game_id = $1")
+        .bind(game_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<i64, _>(0);
+    assert_eq!(locks_count, 27);
+}
+
+#[tokio::test]
+async fn test_game_settings_update() {
+    let (pool, app) = setup_db_and_router().await;
+
+    // Create 2 guest users
+    let (_s1, b1) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let token1 = serde_json::from_slice::<RestApiResponse<Value>>(&b1)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (_s2, b2) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let token2 = serde_json::from_slice::<RestApiResponse<Value>>(&b2)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Create situation pack
+    let sit_create = CreateSituationPackRequest {
+        name: "Settings Test Situations".to_string(),
+        description: None,
+        language_code: "ru".to_string(),
+        safety_level: ContentSafetyLevel::FamilyFriendly,
+        is_public: false,
+        prompts: vec![
+            "S1".to_string(),
+            "S2".to_string(),
+            "S3".to_string(),
+            "S4".to_string(),
+            "S5".to_string(),
+        ],
+    };
+    let (_, sb) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/situations",
+        Some(&token1),
+        Some(&sit_create),
+    )
+    .await;
+    let sit_pack_id = serde_json::from_slice::<RestApiResponse<CreateSituationPackResponse>>(&sb)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .id;
+
+    // Create meme pack
+    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+        .unwrap()
+        .claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
+    sqlx::query("INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility) VALUES (4001, $1, 'hackclub_cdn', 'p_41', 'https://example.com/41.png', '41.png', 'image/png', 1024, 'pending', 'private') ON CONFLICT DO NOTHING").bind(user_id1).execute(&pool).await.unwrap();
+    let meme_create = CreateMemePackRequest {
+        name: "Settings Test Memes".to_string(),
+        description: None,
+        language_code: "ru".to_string(),
+        safety_level: ContentSafetyLevel::FamilyFriendly,
+        is_public: false,
+        media_ids: vec![4001],
+    };
+    let (_, bm) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/memes",
+        Some(&token1),
+        Some(&meme_create),
+    )
+    .await;
+    let meme_pack_id = serde_json::from_slice::<RestApiResponse<CreateMemePackResponse>>(&bm)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .id;
+
+    // Create game with max_rounds: 3, hand_size: 5
+    let create_game_payload = CreateGameRequest {
+        mode: GameMode::SituationToMeme,
+        selected_situation_pack_ids: vec![sit_pack_id],
+        selected_meme_pack_ids: vec![meme_pack_id],
+        max_rounds: 3,
+        hand_size: 5,
+    };
+    let (sg, bg) = send_request(
+        &app,
+        Method::POST,
+        "/games",
+        Some(&token1),
+        Some(&create_game_payload),
+    )
+    .await;
+    assert_eq!(sg, StatusCode::OK);
+    let game_id = serde_json::from_slice::<RestApiResponse<GameDto>>(&bg)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .id;
+
+    // Test PATCH /games/{id} by guest 2 (non-host) -> should fail with 403 Forbidden
+    let patch_payload = UpdateGameRequest {
+        mode: Some(GameMode::MemeToSituation),
+        selected_situation_pack_ids: None,
+        selected_meme_pack_ids: None,
+        max_rounds: Some(5),
+        hand_size: Some(6),
+    };
+    let (spatch1, _) = send_request(
+        &app,
+        Method::PATCH,
+        &format!("/games/{}", game_id),
+        Some(&token2),
+        Some(&patch_payload),
+    )
+    .await;
+    assert_eq!(spatch1, StatusCode::FORBIDDEN);
+
+    // Test PATCH /games/{id} by host (guest 1) -> should succeed with 200 OK
+    let (spatch2, bpatch2) = send_request(
+        &app,
+        Method::PATCH,
+        &format!("/games/{}", game_id),
+        Some(&token1),
+        Some(&patch_payload),
+    )
+    .await;
+    assert_eq!(spatch2, StatusCode::OK);
+    let patch_dto: RestApiResponse<GameDto> = serde_json::from_slice(&bpatch2).unwrap();
+    let patched_game = patch_dto.0.data.unwrap();
+    assert_eq!(patched_game.mode, GameMode::MemeToSituation);
+
+    // Verify database has updated settings
+    let game_row =
+        sqlx::query("SELECT mode::TEXT AS mode, max_rounds, hand_size FROM games WHERE id = $1")
+            .bind(game_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(game_row.get::<String, _>("mode"), "meme_to_situation");
+    assert_eq!(game_row.get::<i32, _>("max_rounds"), 5);
+    assert_eq!(game_row.get::<i32, _>("hand_size"), 6);
+}
+
+#[tokio::test]
+async fn test_game_play_to_completion_deletes_locks() {
+    let (pool, app) = setup_db_and_router().await;
+
+    // Create 3 guest users
+    let (_s1, b1) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let token1 = serde_json::from_slice::<RestApiResponse<Value>>(&b1)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (_s2, b2) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let token2 = serde_json::from_slice::<RestApiResponse<Value>>(&b2)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (_s3, b3) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let token3 = serde_json::from_slice::<RestApiResponse<Value>>(&b3)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+        .unwrap()
+        .claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
+    let claims2 = decode::<Claims>(&token2, &KEYS.decoding, &Validation::default())
+        .unwrap()
+        .claims;
+    let user_id2 = Uuid::parse_str(&claims2.sub).unwrap();
+    let claims3 = decode::<Claims>(&token3, &KEYS.decoding, &Validation::default())
+        .unwrap()
+        .claims;
+    let user_id3 = Uuid::parse_str(&claims3.sub).unwrap();
+
+    // Insert 6 memes and 1 situation for max_rounds: 1, hand_size: 1 (required memes = 3*1 + 3*1 = 6, required situations = 1)
+    for id in 5001..=5006 {
+        sqlx::query(
+            "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
+             VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
+             ON CONFLICT (id) DO NOTHING"
+         )
+         .bind(id as i64)
+         .bind(user_id1)
+         .bind(format!("prov_id_{}", id))
+         .bind(format!("https://example.com/{}.png", id))
+         .bind(format!("meme_{}.png", id))
+         .execute(&pool)
+         .await
+         .unwrap();
+    }
+
+    // Create Meme Pack with 6 memes
+    let meme_create = CreateMemePackRequest {
+        name: "Completion Test Memes".to_string(),
+        description: None,
+        language_code: "ru".to_string(),
+        safety_level: ContentSafetyLevel::FamilyFriendly,
+        is_public: false,
+        media_ids: (5001..=5006).collect(),
+    };
+    let (_, bm) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/memes",
+        Some(&token1),
+        Some(&meme_create),
+    )
+    .await;
+    let meme_pack_id = serde_json::from_slice::<RestApiResponse<CreateMemePackResponse>>(&bm)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .id;
+
+    // Create Situation Pack with 1 situation
+    let sit_create = CreateSituationPackRequest {
+        name: "Completion Test Situations".to_string(),
+        description: None,
+        language_code: "ru".to_string(),
+        safety_level: ContentSafetyLevel::FamilyFriendly,
+        is_public: false,
+        prompts: vec!["Completion prompt".to_string()],
+    };
+    let (_, sb) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/situations",
+        Some(&token1),
+        Some(&sit_create),
+    )
+    .await;
+    let sit_pack_id = serde_json::from_slice::<RestApiResponse<CreateSituationPackResponse>>(&sb)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .id;
+
+    // Create Game with max_rounds: 1, hand_size: 1
+    let create_game_payload = CreateGameRequest {
+        mode: GameMode::SituationToMeme,
+        selected_situation_pack_ids: vec![sit_pack_id],
+        selected_meme_pack_ids: vec![meme_pack_id],
+        max_rounds: 1,
+        hand_size: 1,
+    };
+    let (_, bg) = send_request(
+        &app,
+        Method::POST,
+        "/games",
+        Some(&token1),
+        Some(&create_game_payload),
+    )
+    .await;
+    let game_id = serde_json::from_slice::<RestApiResponse<GameDto>>(&bg)
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .id;
+
+    // Players join
+    send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game_id),
+        Some(&token2),
+        None,
+    )
+    .await;
+    send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game_id),
+        Some(&token3),
+        None,
+    )
+    .await;
+
+    // Ready up
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game_id),
+        Some(&token1),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game_id),
+        Some(&token2),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game_id),
+        Some(&token3),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+
+    // Start game
+    let (sstart, _) = send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/start", game_id),
+        Some(&token1),
+        None,
+    )
+    .await;
+    assert_eq!(sstart, StatusCode::OK);
+
+    // Verify content locks are populated (7 locks: 6 memes + 1 situation)
+    let locks_count = sqlx::query("SELECT COUNT(*) FROM game_content_locks WHERE game_id = $1")
+        .bind(game_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<i64, _>(0);
+    assert_eq!(locks_count, 7);
+
+    // Get game state to resolve round_id and player hands
+    let (_, state_bytes1) = send_request::<()>(
+        &app,
+        Method::GET,
+        &format!("/games/{}/state", game_id),
+        Some(&token1),
+        None,
+    )
+    .await;
+    let state1 = serde_json::from_slice::<RestApiResponse<GameStateDto>>(&state_bytes1)
+        .unwrap()
+        .0
+        .data
+        .unwrap();
+    let round_id = state1.round.as_ref().unwrap().id;
+    let card1_id = match &state1.my_hand[0] {
+        GameCard::Meme { id, .. } => *id,
+        GameCard::Situation { id, .. } => *id,
+    };
+
+    let (_, state_bytes2) = send_request::<()>(
+        &app,
+        Method::GET,
+        &format!("/games/{}/state", game_id),
+        Some(&token2),
+        None,
+    )
+    .await;
+    let state2 = serde_json::from_slice::<RestApiResponse<GameStateDto>>(&state_bytes2)
+        .unwrap()
+        .0
+        .data
+        .unwrap();
+    let card2_id = match &state2.my_hand[0] {
+        GameCard::Meme { id, .. } => *id,
+        GameCard::Situation { id, .. } => *id,
+    };
+
+    let (_, state_bytes3) = send_request::<()>(
+        &app,
+        Method::GET,
+        &format!("/games/{}/state", game_id),
+        Some(&token3),
+        None,
+    )
+    .await;
+    let state3 = serde_json::from_slice::<RestApiResponse<GameStateDto>>(&state_bytes3)
+        .unwrap()
+        .0
+        .data
+        .unwrap();
+    let card3_id = match &state3.my_hand[0] {
+        GameCard::Meme { id, .. } => *id,
+        GameCard::Situation { id, .. } => *id,
+    };
+
+    // Submissions
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        Some(&token1),
+        Some(&SubmitCardRequest { card_id: card1_id }),
+    )
+    .await;
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        Some(&token2),
+        Some(&SubmitCardRequest { card_id: card2_id }),
+    )
+    .await;
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        Some(&token3),
+        Some(&SubmitCardRequest { card_id: card3_id }),
+    )
+    .await;
+
+    // Resolve submissions
+    let db_subs = sqlx::query("SELECT id, user_id FROM round_submissions WHERE round_id = $1")
+        .bind(round_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let sub1 = db_subs
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id1)
+        .unwrap()
+        .get::<Uuid, _>("id");
+    let sub2 = db_subs
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id2)
+        .unwrap()
+        .get::<Uuid, _>("id");
+    let sub3 = db_subs
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id3)
+        .unwrap()
+        .get::<Uuid, _>("id");
+
+    // 10. Verify self-voting constraint: Player 1 votes for Player 1's submission (sub1) -> should fail
+    let (self_vote_status, self_vote_bytes) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        Some(&token1),
+        Some(&VoteRequest {
+            submission_id: sub1,
+        }),
+    )
+    .await;
+    assert_eq!(self_vote_status, StatusCode::BAD_REQUEST);
+    let self_vote_body =
+        serde_json::from_slice::<RestApiResponse<Value>>(&self_vote_bytes).unwrap();
+    assert!(self_vote_body
+        .0
+        .message
+        .contains("Cannot vote for your own submission"));
+
+    // Real votes
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        Some(&token1),
+        Some(&VoteRequest {
+            submission_id: sub2,
+        }),
+    )
+    .await;
+    send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        Some(&token2),
+        Some(&VoteRequest {
+            submission_id: sub3,
+        }),
+    )
+    .await;
+    let (svote, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        Some(&token3),
+        Some(&VoteRequest {
+            submission_id: sub1,
+        }),
+    )
+    .await;
+    assert_eq!(svote, StatusCode::OK);
+
+    // Verify game status is finished
+    let game_row = sqlx::query("SELECT status::TEXT AS status FROM games WHERE id = $1")
+        .bind(game_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(game_row.get::<String, _>("status"), "finished");
+
+    // Verify all game content locks are deleted
+    let locks_count_after =
+        sqlx::query("SELECT COUNT(*) FROM game_content_locks WHERE game_id = $1")
+            .bind(game_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .get::<i64, _>(0);
+    assert_eq!(locks_count_after, 0);
 }

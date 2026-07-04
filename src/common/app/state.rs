@@ -5,19 +5,22 @@ use super::config::Config;
 pub mod auth;
 pub mod media;
 pub mod user;
+pub mod realtime;
 
 pub use auth::AuthState;
 pub use media::MediaState;
 pub use user::UserState;
+pub use realtime::RealtimeState;
 pub use crate::features::game::GameState;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
-    auth: AuthState,
-    media: MediaState,
-    user: UserState,
-    game: GameState,
+    pub auth: AuthState,
+    pub media: MediaState,
+    pub user: UserState,
+    pub game: GameState,
+    pub realtime: RealtimeState,
 }
 
 impl AppState {
@@ -27,6 +30,7 @@ impl AppState {
         media: MediaState,
         user: UserState,
         game: GameState,
+        realtime: RealtimeState,
     ) -> Self {
         Self {
             config,
@@ -34,6 +38,7 @@ impl AppState {
             media,
             user,
             game,
+            realtime,
         }
     }
 }
@@ -59,5 +64,11 @@ impl FromRef<AppState> for UserState {
 impl FromRef<AppState> for GameState {
     fn from_ref(state: &AppState) -> Self {
         state.game.clone()
+    }
+}
+
+impl FromRef<AppState> for RealtimeState {
+    fn from_ref(state: &AppState) -> Self {
+        state.realtime.clone()
     }
 }

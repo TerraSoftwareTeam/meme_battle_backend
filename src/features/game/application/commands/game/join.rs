@@ -1,23 +1,25 @@
 use std::sync::Arc;
-use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
-    features::game::domain::{
-        model::GameStatus,
-        ports::GameRepository,
+    features::game::{
+        application::ports::game_notification_sender::GameNotificationSender,
+        domain::{
+            model::GameStatus,
+            ports::GameRepository,
+        },
     },
-    features::game::application::commands::outbox_helper::publish_event,
 };
 
 pub struct JoinGameCommand {
     repo: Arc<dyn GameRepository>,
+    notification_sender: Arc<dyn GameNotificationSender>,
 }
 
 impl JoinGameCommand {
-    pub fn new(repo: Arc<dyn GameRepository>) -> Self {
-        Self { repo }
+    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
+        Self { repo, notification_sender }
     }
 
     pub async fn execute(&self, user_id: Uuid, game_id: Uuid) -> Result<(), AppError> {
@@ -46,15 +48,25 @@ impl JoinGameCommand {
         let new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
 
         // Publish event
-        publish_event(
-            self.repo.as_ref(),
-            &mut tx,
-            game_id,
-            new_version,
-            "PlayerJoined",
-            json!({ "user_id": user_id }),
-        )
-        .await?;
+        let players_count = (players.len() + 1) as i32;
+
+        self.repo
+            .insert_game_event(
+                &mut tx,
+                Uuid::new_v4(),
+                game_id,
+                new_version,
+                "PlayerJoined",
+                serde_json::json!({
+                    "user_id": user_id,
+                    "players_count": players_count
+                }),
+            )
+            .await?;
+
+        self.notification_sender
+            .notify_player_joined(&mut tx, game_id, user_id, players_count, new_version)
+            .await?;
 
         tx.commit().await?;
         Ok(())
