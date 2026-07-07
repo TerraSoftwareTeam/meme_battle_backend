@@ -79,6 +79,11 @@ jobs:
             cp -r centrifuge /home/deployer/meme_battle_backend/centrifuge
           fi
 
+          if [ -d observability ]; then
+            rm -rf /home/deployer/meme_battle_backend/observability
+            cp -r observability /home/deployer/meme_battle_backend/observability
+          fi
+
       - name: Debug deploy directory
         run: |
           ls -la /home/deployer/meme_battle_backend
@@ -106,7 +111,10 @@ jobs:
           DATABASE_MAX_CONNECTIONS: ${{ vars.DATABASE_MAX_CONNECTIONS || '5' }}
           DATABASE_MIN_CONNECTIONS: ${{ vars.DATABASE_MIN_CONNECTIONS || '1' }}
           CENTRIFUGO_API_URL: ${{ vars.CENTRIFUGO_API_URL || 'http://centrifugo:8000/api' }}
-          RUST_LOG: ${{ vars.RUST_LOG || 'info,sqlx=debug,tower_http=info,axum::rejection=trace,opentelemetry=info' }}
+          RUST_LOG: ${{ vars.RUST_LOG || 'info,sqlx=info,tower_http=info,axum::rejection=trace,opentelemetry=info' }}
+          GF_ADMIN_USER: ${{ vars.GF_ADMIN_USER || 'admin' }}
+          GF_ADMIN_PASSWORD: ${{ secrets.GF_ADMIN_PASSWORD }}
+          GRAFANA_EXTERNAL_PORT: ${{ vars.GRAFANA_EXTERNAL_PORT || '3000' }}
         run: |
           # Verification of Required Secrets
           : "${POSTGRES_USER:?POSTGRES_USER secret is required}"
@@ -121,6 +129,7 @@ jobs:
           : "${CENTRIFUGO_API_KEY:?CENTRIFUGO_API_KEY secret is required}"
           : "${CENTRIFUGO_ADMIN_PASSWORD:?CENTRIFUGO_ADMIN_PASSWORD secret is required}"
           : "${CENTRIFUGO_ADMIN_SECRET:?CENTRIFUGO_ADMIN_SECRET secret is required}"
+          : "${GF_ADMIN_PASSWORD:?GF_ADMIN_PASSWORD secret is required}"
 
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-7)"
 
@@ -151,8 +160,12 @@ jobs:
 
           RUST_LOG=${RUST_LOG}
 
-          OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+          OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4318
           OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+          GF_ADMIN_USER=${GF_ADMIN_USER}
+          GF_ADMIN_PASSWORD=${GF_ADMIN_PASSWORD}
+          GRAFANA_EXTERNAL_PORT=${GRAFANA_EXTERNAL_PORT}
           EOF
 
           chmod 600 .env

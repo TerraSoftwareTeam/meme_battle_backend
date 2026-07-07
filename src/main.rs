@@ -26,12 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     setup_tracing();
 
     #[cfg(feature = "opentelemetry")]
-    let opentelemetry_tracer_provider = {
-        let provider = setup_tracing_opentelemetry();
+    let otel_providers = {
+        let providers = setup_tracing_opentelemetry();
         // Startup span to ensure at least one span is generated and exported
         let span = tracing::info_span!("startup");
         let _enter = span.enter();
-        provider
+        providers
     };
 
     info!("Loading application configuration");
@@ -58,8 +58,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let state = build_app_state(pool.clone(), config.clone());
 
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
     // Start unified realtime outbox processor worker
-    state.realtime.processor.clone().start(pool.clone());
+    state.realtime.processor.clone().start(pool.clone(), shutdown_rx.clone());
+
+    // Start game timer background worker
+    state.game.timer_worker.clone().start(shutdown_rx);
 
     let app = create_router(state);
 
@@ -80,8 +85,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
+    let shutdown_signal_fut = async move {
+        shutdown_signal().await;
+        info!("Graceful shutdown initiated, signaling background workers");
+        let _ = shutdown_tx.send(true);
+    };
+
     if let Err(err) = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(shutdown_signal_fut)
         .await
     {
         error!(error = %err, "HTTP server stopped with error");
@@ -91,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("HTTP server stopped");
 
     #[cfg(feature = "opentelemetry")]
-    if let Err(err) = shutdown_opentelemetry(opentelemetry_tracer_provider) {
+    if let Err(err) = shutdown_opentelemetry(otel_providers) {
         error!(error = %err, "OpenTelemetry shutdown failed");
         return Err(err);
     }

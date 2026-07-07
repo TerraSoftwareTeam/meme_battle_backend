@@ -1,0 +1,41 @@
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: "0.0.0.0:4318"
+        grpc:
+          endpoint: "0.0.0.0:4317"
+
+# Tempo 3.0: legacy ingester removed, replaced by live_store
+live_store:
+  max_block_bytes: 50_000_000   # 50 MiB
+  max_block_duration: 30s
+  complete_block_timeout: 20m
+
+# NOTE: In Tempo 3.0 top-level compactor key is removed.
+# Retention is controlled via storage.trace.block settings.
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
+    block:
+      bloom_filter_false_positive: 0.05
+
+querier:
+  max_concurrent_queries: 20
+
+query_frontend:
+  search:
+    duration_slo: 5s
+    throughput_bytes_slo: 1.073741824e+09
+  trace_by_id:
+    duration_slo: 5s

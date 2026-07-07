@@ -110,6 +110,7 @@ pub async fn get_game_state(
         round_number: round.round_number,
         phase: round.phase,
         prompt: res.prompt,
+        phase_expires_at: round.phase_expires_at,
     });
 
     let state_dto = GameStateDto {

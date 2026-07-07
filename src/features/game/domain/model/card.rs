@@ -23,4 +23,5 @@ pub struct GamePlayerHandCardWithMedia {
     pub id: Uuid,
     pub kind: String,
     pub media_id: Option<i64>,
+    pub text: Option<String>,
 }

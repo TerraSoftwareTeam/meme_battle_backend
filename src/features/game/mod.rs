@@ -13,6 +13,7 @@ pub use application::commands::{
     DeleteMemePackCommand, AddMemesToPackCommand, DeletePackMemeCommand,
     CreateSituationPackCommand, UpdateSituationPackCommand, DeleteSituationPackCommand,
     AddSituationsToPackCommand, DeletePackSituationCommand, UpdateGameCommand,
+    ProcessTimeoutCommand,
 };
 
 // Re-export queries
@@ -39,6 +40,7 @@ pub use application::ports::game_token_generator::GameTokenGenerator;
 
 // Re-export infrastructure adapter
 pub use infra::adapters::GameRepositoryImpl;
+pub use infra::timer_worker::GameTimerWorker;
 
 use std::sync::Arc;
 
@@ -67,6 +69,8 @@ pub struct GameState {
     pub list_situation_packs: Arc<ListSituationPacksQuery>,
     pub get_situation_pack: Arc<GetSituationPackQuery>,
     pub get_ws_token: Arc<GetWsTokenQuery>,
+    pub process_timeout: Arc<ProcessTimeoutCommand>,
+    pub timer_worker: Arc<GameTimerWorker>,
 }
 
 impl GameState {
@@ -94,6 +98,8 @@ impl GameState {
         list_situation_packs: Arc<ListSituationPacksQuery>,
         get_situation_pack: Arc<GetSituationPackQuery>,
         get_ws_token: Arc<GetWsTokenQuery>,
+        process_timeout: Arc<ProcessTimeoutCommand>,
+        timer_worker: Arc<GameTimerWorker>,
     ) -> Self {
         Self {
             create_game,
@@ -119,6 +125,8 @@ impl GameState {
             list_situation_packs,
             get_situation_pack,
             get_ws_token,
+            process_timeout,
+            timer_worker,
         }
     }
 }

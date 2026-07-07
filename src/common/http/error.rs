@@ -76,6 +76,7 @@ impl IntoResponse for AppError {
             status: status.as_u16(),
             message: self.to_string(),
             data: None,
+            request_id: crate::common::http::dto::get_current_request_id(),
         });
 
         (status, body).into_response()

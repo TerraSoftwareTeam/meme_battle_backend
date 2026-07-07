@@ -379,7 +379,8 @@ async fn test_real_game_centrifugo_gameplay_flow() {
     });
 
     // Start outbox processor
-    state.realtime.processor.clone().start(pool.clone());
+    let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    state.realtime.processor.clone().start(pool.clone(), shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);
@@ -664,6 +665,8 @@ async fn test_real_game_centrifugo_gameplay_flow() {
         assert_eq!(payload.get("round_number").unwrap().as_i64(), Some(1));
         assert_eq!(payload.get("phase").unwrap().as_str(), Some("submitting"));
         assert!(payload.get("round_id").is_some());
+        assert!(payload.get("prompt_content").unwrap().as_str().is_some());
+        assert!(payload.get("prompt_kind").unwrap().as_str().is_some());
     }
 
     // ── 11. Each player receives hand_updated on their personal channel ───────
@@ -692,6 +695,18 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             "Player {} hand should have 2 cards",
             idx + 1
         );
+
+        for card in cards {
+            assert!(card.get("kind").unwrap().as_str().is_some());
+            let kind = card.get("kind").unwrap().as_str().unwrap();
+            if kind == "meme" {
+                assert!(card.get("image_url").is_some());
+                assert!(card.get("text").is_none());
+            } else {
+                assert!(card.get("text").is_some());
+                assert!(card.get("image_url").is_none());
+            }
+        }
 
         // Ensure it came on personal channel (not game channel)
         assert_eq!(
@@ -968,6 +983,10 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             payload.get("scoreboard").unwrap().as_array().is_some(),
             "Missing scoreboard"
         );
+        assert!(
+            payload.get("round_scoreboard").unwrap().as_array().is_some(),
+            "Missing round_scoreboard"
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1117,6 +1136,10 @@ async fn test_real_game_centrifugo_gameplay_flow() {
         let payload = data.get("payload").unwrap();
         assert_eq!(payload.get("round_number").unwrap().as_i64(), Some(2));
         assert!(payload.get("winner_user_id").is_some());
+        assert!(
+            payload.get("round_scoreboard").unwrap().as_array().is_some(),
+            "Missing round_scoreboard"
+        );
     }
 
     // ── 23. Verify game_finished event on game channel ────────────────────────

@@ -31,6 +31,7 @@ pub struct RoundDto {
     pub round_number: i32,
     pub phase: RoundPhase,
     pub prompt: Option<GameCard>,
+    pub phase_expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]

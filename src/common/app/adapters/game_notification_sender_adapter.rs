@@ -10,6 +10,7 @@ use crate::{
             GameNotificationSender,
             GamePlayerHandCardWithMedia,
         },
+        media::GetMediaAssetUrlQuery,
         realtime::{
             PublishNotificationCommand,
             model::{
@@ -24,11 +25,18 @@ use crate::{
 
 pub struct GameNotificationSenderAdapter {
     publish_usecase: Arc<PublishNotificationCommand>,
+    get_media_asset_url: Arc<GetMediaAssetUrlQuery>,
 }
 
 impl GameNotificationSenderAdapter {
-    pub fn new(publish_usecase: Arc<PublishNotificationCommand>) -> Self {
-        Self { publish_usecase }
+    pub fn new(
+        publish_usecase: Arc<PublishNotificationCommand>,
+        get_media_asset_url: Arc<GetMediaAssetUrlQuery>,
+    ) -> Self {
+        Self {
+            publish_usecase,
+            get_media_asset_url,
+        }
     }
 }
 
@@ -73,7 +81,6 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             rounds_count,
             hand_size,
             current_round_number: 1,
-            phase: "submitting".to_string(),
         });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }
@@ -85,17 +92,25 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         round_id: Uuid,
         round_number: i32,
         prompt_kind: String,
-        prompt_id: Uuid,
+        prompt_media_id: Option<i64>,
+        prompt_text: Option<String>,
+        phase_expires_at: chrono::DateTime<chrono::Utc>,
         version: i64,
     ) -> Result<(), AppError> {
+        let prompt_content = if let Some(media_id) = prompt_media_id {
+            self.get_media_asset_url.execute(media_id).await?.unwrap_or_default()
+        } else {
+            prompt_text.unwrap_or_default()
+        };
+
         let channel = format!("game:{}", game_id);
         let payload = RealtimePayload::RoundStarted(RoundStartedPayload {
             round_id,
             round_number,
             phase: "submitting".to_string(),
             prompt_kind,
-            prompt_id,
-            submission_deadline_at: chrono::Utc::now() + chrono::Duration::seconds(45),
+            prompt_content,
+            phase_expires_at,
         });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }
@@ -110,14 +125,20 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("personal:#{}", user_id);
-        let cards_dto = cards
-            .into_iter()
-            .map(|card| HandCardDto {
-                kind: card.kind,
+        let mut cards_dto = Vec::new();
+        for card in cards {
+            let image_url = if let Some(media_id) = card.media_id {
+                self.get_media_asset_url.execute(media_id).await?
+            } else {
+                None
+            };
+            cards_dto.push(HandCardDto {
                 id: card.id,
-                media_id: card.media_id,
-            })
-            .collect::<Vec<_>>();
+                kind: card.kind,
+                image_url,
+                text: card.text,
+            });
+        }
         let payload = RealtimePayload::HandUpdated(HandUpdatedPayload { round_id, cards: cards_dto });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, Some(user_id)).await
     }
@@ -141,10 +162,15 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         game_id: Uuid,
         round_id: Uuid,
         phase: String,
+        phase_expires_at: Option<chrono::DateTime<chrono::Utc>>,
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
-        let payload = RealtimePayload::RoundPhaseChanged(RoundPhaseChangedPayload { round_id, phase });
+        let payload = RealtimePayload::RoundPhaseChanged(RoundPhaseChangedPayload {
+            round_id,
+            phase,
+            phase_expires_at,
+        });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }
 
@@ -169,10 +195,18 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         round_number: i32,
         winner_user_id: Uuid,
         scoreboard: Vec<(Uuid, i32)>,
+        round_scoreboard: Vec<(Uuid, i32)>,
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
         let scoreboard_dto = scoreboard
+            .into_iter()
+            .map(|(uid, s)| ScoreItem {
+                user_id: uid,
+                score: s,
+            })
+            .collect::<Vec<_>>();
+        let round_scoreboard_dto = round_scoreboard
             .into_iter()
             .map(|(uid, s)| ScoreItem {
                 user_id: uid,
@@ -184,6 +218,7 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             round_number,
             winner_user_id,
             scoreboard: scoreboard_dto,
+            round_scoreboard: round_scoreboard_dto,
         });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }

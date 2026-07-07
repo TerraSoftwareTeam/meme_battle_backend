@@ -32,6 +32,8 @@ pub struct Game {
     /// Maximum number of rounds before the game ends.
     pub max_rounds: i32,
     pub hand_size: i32,
+    pub submit_time_limit: i32,
+    pub vote_time_limit: i32,
     /// Index of the current round (0 = none started yet).
     pub current_round: i32,
     pub version: i64,
@@ -63,6 +65,9 @@ pub enum GameEvent {
         winner_user_id: Option<Uuid>,
         /// Per-player (user_id, new_score) snapshots after the round
         scores: Vec<(Uuid, i32)>,
+        /// Per-player (user_id, round_score) snapshots in this round
+        #[serde(default)]
+        round_scores: Vec<(Uuid, i32)>,
     },
     GameFinished {
         final_scores: Vec<(Uuid, i32)>,

@@ -1,4 +1,5 @@
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{postgres::{PgPoolOptions, PgConnectOptions}, PgPool, ConnectOptions};
+use std::str::FromStr;
 use std::env;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -114,10 +115,13 @@ pub async fn setup_database(config: &Config) -> Result<PgPool, sqlx::Error> {
             "Database connection attempt started"
         );
 
+        let mut connect_options = PgConnectOptions::from_str(&config.database_url)?;
+        connect_options = connect_options.log_statements(log::LevelFilter::Trace);
+
         match PgPoolOptions::new()
             .max_connections(config.database_max_connections)
             .min_connections(config.database_min_connections)
-            .connect(&config.database_url)
+            .connect_with(connect_options)
             .await
         {
             Ok(pool) => {

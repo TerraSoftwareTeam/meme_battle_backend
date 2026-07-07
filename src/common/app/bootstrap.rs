@@ -144,7 +144,10 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
 
     // Global Adapters wiring Game feature to Realtime feature
     let notification_sender: Arc<dyn crate::features::game::GameNotificationSender> =
-        Arc::new(crate::common::app::adapters::GameNotificationSenderAdapter::new(publish_usecase));
+        Arc::new(crate::common::app::adapters::GameNotificationSenderAdapter::new(
+            publish_usecase,
+            get_media_asset_url.clone(),
+        ));
     let token_generator: Arc<dyn crate::features::game::GameTokenGenerator> =
         Arc::new(crate::common::app::adapters::GameTokenGeneratorAdapter::new(token_usecase));
 
@@ -161,7 +164,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let start_game = Arc::new(crate::features::game::StartGameCommand::new(game_repository.clone(), notification_sender.clone()));
     let update_game = Arc::new(crate::features::game::UpdateGameCommand::new(game_repository.clone()));
     let submit_card = Arc::new(crate::features::game::SubmitCardCommand::new(game_repository.clone(), notification_sender.clone()));
-    let vote_card = Arc::new(crate::features::game::VoteCardCommand::new(game_repository.clone(), notification_sender));
+    let vote_card = Arc::new(crate::features::game::VoteCardCommand::new(game_repository.clone(), notification_sender.clone()));
     let get_game_state = Arc::new(crate::features::game::GetGameStateQuery::new(game_repository.clone()));
     let create_meme_pack = Arc::new(crate::features::game::CreateMemePackCommand::new(
         game_repository.clone(),
@@ -183,7 +186,16 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let get_meme_pack = Arc::new(crate::features::game::GetMemePackQuery::new(game_repository.clone()));
     let list_situation_packs = Arc::new(crate::features::game::ListSituationPacksQuery::new(game_repository.clone()));
     let get_situation_pack = Arc::new(crate::features::game::GetSituationPackQuery::new(game_repository.clone()));
-    let get_ws_token = Arc::new(crate::features::game::GetWsTokenQuery::new(game_repository, token_generator));
+    let get_ws_token = Arc::new(crate::features::game::GetWsTokenQuery::new(game_repository.clone(), token_generator));
+
+    let process_timeout = Arc::new(crate::features::game::ProcessTimeoutCommand::new(
+        game_repository.clone(),
+        notification_sender,
+    ));
+    let timer_worker = Arc::new(crate::features::game::GameTimerWorker::new(
+        game_repository,
+        process_timeout.clone(),
+    ));
 
     let game_state = crate::features::game::GameState::new(
         create_game,
@@ -209,6 +221,8 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         list_situation_packs,
         get_situation_pack,
         get_ws_token,
+        process_timeout,
+        timer_worker,
     );
 
     let state = AppState::new(

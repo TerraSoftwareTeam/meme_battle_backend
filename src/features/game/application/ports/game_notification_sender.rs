@@ -1,7 +1,9 @@
 use async_trait::async_trait;
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
+use chrono::{DateTime, Utc};
 use crate::common::http::error::AppError;
+
 
 #[async_trait]
 pub trait GameNotificationSender: Send + Sync {
@@ -39,7 +41,9 @@ pub trait GameNotificationSender: Send + Sync {
         round_id: Uuid,
         round_number: i32,
         prompt_kind: String,
-        prompt_id: Uuid,
+        prompt_media_id: Option<i64>,
+        prompt_text: Option<String>,
+        phase_expires_at: DateTime<Utc>,
         version: i64,
     ) -> Result<(), AppError>;
 
@@ -68,6 +72,7 @@ pub trait GameNotificationSender: Send + Sync {
         game_id: Uuid,
         round_id: Uuid,
         phase: String,
+        phase_expires_at: Option<DateTime<Utc>>,
         version: i64,
     ) -> Result<(), AppError>;
 
@@ -88,6 +93,7 @@ pub trait GameNotificationSender: Send + Sync {
         round_number: i32,
         winner_user_id: Uuid,
         scoreboard: Vec<(Uuid, i32)>,
+        round_scoreboard: Vec<(Uuid, i32)>,
         version: i64,
     ) -> Result<(), AppError>;
 

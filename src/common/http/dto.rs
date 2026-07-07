@@ -1,6 +1,31 @@
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
 
+tokio::task_local! {
+    pub static REQUEST_ID: String;
+}
+
+/// Retrieve the current request's unique identifier.
+/// Returns the OpenTelemetry trace ID if OTel is active and valid,
+/// otherwise falls back to the task-local request ID or a newly generated UUID.
+pub fn get_current_request_id() -> String {
+    #[cfg(feature = "opentelemetry")]
+    {
+        use tracing_opentelemetry::OpenTelemetrySpanExt;
+        use opentelemetry::trace::TraceContextExt;
+        let context = tracing::Span::current().context();
+        let span = context.span();
+        let span_context = span.span_context();
+        if span_context.is_valid() {
+            return span_context.trace_id().to_string();
+        }
+    }
+
+    REQUEST_ID
+        .try_with(|id| id.clone())
+        .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string())
+}
+
 /// A standardized API response format.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ApiResponse<T>
@@ -10,6 +35,7 @@ where
     pub status: u16,
     pub message: String,
     pub data: Option<T>,
+    pub request_id: String,
 }
 
 /// A standardized API response format for successful and failed responses.
@@ -28,6 +54,7 @@ where
             status: 200,
             message: "success".to_string(),
             data: Some(data),
+            request_id: get_current_request_id(),
         }
     }
 
@@ -37,6 +64,7 @@ where
             status: 200,
             message: message.into(),
             data: Some(data),
+            request_id: get_current_request_id(),
         }
     }
 
@@ -46,6 +74,7 @@ where
             status,
             message: message.into(),
             data: None,
+            request_id: get_current_request_id(),
         }
     }
 }

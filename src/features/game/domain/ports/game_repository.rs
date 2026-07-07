@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
 
 use crate::{
     common::http::error::AppError,
@@ -114,6 +116,7 @@ pub trait GameRepository: Send + Sync {
         prompt_situation_id: Option<Uuid>,
         prompt_meme_id: Option<Uuid>,
         phase: RoundPhase,
+        phase_expires_at: Option<DateTime<Utc>>,
     ) -> Result<GameRound, AppError>;
 
     async fn activate_next_round(
@@ -121,7 +124,9 @@ pub trait GameRepository: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
         round_number: i32,
+        phase_expires_at: Option<DateTime<Utc>>,
     ) -> Result<(), AppError>;
+
 
     async fn check_player_hand_card(
         &self,
@@ -166,13 +171,15 @@ pub trait GameRepository: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         round_id: Uuid,
         phase: RoundPhase,
+        phase_expires_at: Option<DateTime<Utc>>,
     ) -> Result<(), AppError>;
+
 
     async fn update_round_winner_and_phase(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         round_id: Uuid,
-        winner_user_id: Uuid,
+        winner_user_id: Option<Uuid>,
         phase: RoundPhase,
     ) -> Result<(), AppError>;
 
@@ -209,6 +216,20 @@ pub trait GameRepository: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         round_id: Uuid,
     ) -> Result<Vec<(Uuid, i64)>, AppError>;
+
+    async fn get_round_scoreboard(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        round_id: Uuid,
+    ) -> Result<Vec<(Uuid, i32)>, AppError>;
+
+    async fn get_prompt_details(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        prompt_kind: &str,
+        prompt_id: Uuid,
+    ) -> Result<(Option<i64>, Option<String>), AppError>;
 
     /// Insert an event into `game_events`.
     ///
@@ -370,4 +391,19 @@ pub trait GameRepository: Send + Sync {
     async fn is_situation_pack_locked(&self, pack_id: Uuid) -> Result<bool, AppError>;
     async fn is_meme_locked(&self, meme_id: Uuid) -> Result<bool, AppError>;
     async fn is_situation_locked(&self, situation_id: Uuid) -> Result<bool, AppError>;
+
+    async fn get_unused_hand_cards(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<GamePlayerHandCard>, AppError>;
+
+    async fn claim_next_expired_round(
+        &self,
+        worker_id: Uuid,
+        now: DateTime<Utc>,
+        stale_timeout: DateTime<Utc>,
+    ) -> Result<Option<GameRound>, AppError>;
 }
+

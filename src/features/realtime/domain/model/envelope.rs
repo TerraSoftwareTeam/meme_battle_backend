@@ -51,10 +51,12 @@ pub struct ScoreItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HandCardDto {
-    pub kind: String,
     pub id: Uuid,
+    pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub media_id: Option<i64>,
+    pub image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +75,8 @@ pub struct PlayerReadyChangedPayload {
 pub struct RoundPhaseChangedPayload {
     pub round_id: Uuid,
     pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase_expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,7 +90,6 @@ pub struct GameStartedPayload {
     pub rounds_count: i32,
     pub hand_size: i32,
     pub current_round_number: i32,
-    pub phase: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,8 +98,8 @@ pub struct RoundStartedPayload {
     pub round_number: i32,
     pub phase: String,
     pub prompt_kind: String,
-    pub prompt_id: Uuid,
-    pub submission_deadline_at: DateTime<Utc>,
+    pub prompt_content: String,
+    pub phase_expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +114,7 @@ pub struct RoundFinishedPayload {
     pub round_number: i32,
     pub winner_user_id: Uuid,
     pub scoreboard: Vec<ScoreItem>,
+    pub round_scoreboard: Vec<ScoreItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

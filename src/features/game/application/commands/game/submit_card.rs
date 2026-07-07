@@ -88,11 +88,14 @@ impl SubmitCardCommand {
         let submissions_count = self.repo.get_submissions_count(&mut tx, round_id).await?;
 
         let mut round_phase_changed = false;
+        let mut next_expires_at = None;
         if submissions_count >= players.len() as i64 {
+            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(game.vote_time_limit as i64);
             self.repo
-                .update_round_phase(&mut tx, round_id, RoundPhase::Voting)
+                .update_round_phase(&mut tx, round_id, RoundPhase::Voting, Some(expires_at))
                 .await?;
             round_phase_changed = true;
+            next_expires_at = Some(expires_at);
         }
 
         // 8. Increment version
@@ -135,7 +138,14 @@ impl SubmitCardCommand {
                 .await?;
 
             self.notification_sender
-                .notify_round_phase_changed(&mut tx, game_id, round_id, "voting".to_string(), new_version)
+                .notify_round_phase_changed(
+                    &mut tx,
+                    game_id,
+                    round_id,
+                    "voting".to_string(),
+                    next_expires_at,
+                    new_version,
+                )
                 .await?;
         }
 

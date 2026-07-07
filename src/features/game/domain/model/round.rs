@@ -31,6 +31,9 @@ pub struct GameRound {
     pub prompt_meme_id: Option<Uuid>,
     pub phase: RoundPhase,
     pub winner_user_id: Option<Uuid>,
+    pub phase_expires_at: Option<DateTime<Utc>>,
+    pub claimed_at: Option<DateTime<Utc>>,
+    pub claimed_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }
 

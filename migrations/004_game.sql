@@ -49,6 +49,8 @@ CREATE TABLE games (
     status game_status NOT NULL DEFAULT 'lobby',
     max_rounds INT NOT NULL DEFAULT 3,
     hand_size INT NOT NULL DEFAULT 5,
+    submit_time_limit INT NOT NULL DEFAULT 60,
+    vote_time_limit INT NOT NULL DEFAULT 30,
     current_round INT NOT NULL DEFAULT 0,
     version BIGINT NOT NULL DEFAULT 1,
     started_at TIMESTAMPTZ,
@@ -121,6 +123,9 @@ CREATE TABLE game_rounds (
     prompt_meme_id UUID REFERENCES pack_memes(id) ON DELETE CASCADE,
     phase round_phase NOT NULL DEFAULT 'submitting',
     winner_user_id UUID REFERENCES users(id),
+    phase_expires_at TIMESTAMPTZ,
+    claimed_at TIMESTAMPTZ,
+    claimed_by UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (num_nonnulls(prompt_situation_id, prompt_meme_id) = 1)
 );

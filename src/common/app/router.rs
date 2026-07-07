@@ -80,22 +80,45 @@ pub fn create_router(state: AppState) -> Router {
         .merge(protected_routes)
         .merge(create_swagger_ui())
         .merge(create_admin_swagger_ui())
+        .layer(middleware::from_fn(request_id_middleware))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|req: &axum::http::Request<_>| {
+                    let user_agent = req.headers()
+                        .get(axum::http::header::USER_AGENT)
+                        .and_then(|h| h.to_str().ok())
+                        .unwrap_or("");
+                    let client_ip = req.headers()
+                        .get("x-forwarded-for")
+                        .and_then(|h| h.to_str().ok())
+                        .and_then(|s| s.split(',').next())
+                        .map(|s| s.trim())
+                        .unwrap_or("");
+
                     tracing::info_span!(
                         "request",
                         method = %req.method(),
-                        uri = %req.uri(),
+                        uri = %req.uri().path(),
+                        user_agent = %user_agent,
+                        client_ip = %client_ip,
+                        status_code = tracing::field::Empty,
+                        error = tracing::field::Empty,
+                        request_id = tracing::field::Empty,
                     )
                 })
                 .on_response(
                     |response: &axum::http::Response<_>,
                      latency: std::time::Duration,
-                     _span: &tracing::Span| {
+                     span: &tracing::Span| {
+                        let status_code = response.status().as_u16();
+                        span.record("status_code", status_code);
+                        if status_code >= 400 {
+                            span.record("error", true);
+                        }
+
                         tracing::info!(
                             "request completed: status = {status}, latency = {latency:?}",
-                            status = response.status(),
+                            status = status_code,
                             latency = latency
                         );
                      },
@@ -205,4 +228,34 @@ where
     }
 
     Ok(bytes)
+}
+
+/// Middleware that generates a task-local request ID, records it on the request tracing span,
+/// and adds it to the HTTP response headers.
+async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
+    let generated_uuid = uuid::Uuid::new_v4().to_string();
+
+    // Bind the generated UUID to the task-local variable
+    let (mut res, final_request_id) = crate::common::http::dto::REQUEST_ID.scope(generated_uuid.clone(), async move {
+        // Proceed with the request handler chain
+        let res = next.run(req).await;
+
+        // Grab the final request ID (either the OTel trace ID or the fallback UUID)
+        let final_request_id = crate::common::http::dto::get_current_request_id();
+
+        // Record it on the active tracing span
+        tracing::Span::current().record("request_id", &final_request_id);
+
+        (res, final_request_id)
+    }).await;
+
+    // Inject the request ID into the response headers
+    if let Ok(hdr_val) = axum::http::HeaderValue::from_str(&final_request_id) {
+        res.headers_mut().insert(
+            axum::http::HeaderName::from_static("x-request-id"),
+            hdr_val,
+        );
+    }
+
+    res
 }

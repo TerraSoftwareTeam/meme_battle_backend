@@ -19,10 +19,10 @@ COPY overwrite /app/overwrite
 
 ENV SWAGGER_UI_OVERWRITE_FOLDER=/app/overwrite
 
-RUN cargo chef cook --release --locked --recipe-path recipe.json
+RUN cargo chef cook --release --locked --features opentelemetry --recipe-path recipe.json
 
 COPY . .
-RUN cargo build --release --locked
+RUN cargo build --release --locked --features opentelemetry
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app

@@ -3,7 +3,7 @@ pub mod pack;
 
 pub use game::{
     CreateGameCommand, JoinGameCommand, SetReadyCommand, StartGameCommand,
-    SubmitCardCommand, VoteCardCommand, UpdateGameCommand,
+    SubmitCardCommand, VoteCardCommand, UpdateGameCommand, ProcessTimeoutCommand,
 };
 pub use pack::{
     CreateMemePackCommand, UpdateMemePackCommand, DeleteMemePackCommand, AddMemesToPackCommand, DeletePackMemeCommand,

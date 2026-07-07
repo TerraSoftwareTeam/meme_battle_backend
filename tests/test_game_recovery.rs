@@ -236,7 +236,8 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
     });
 
     // Start outbox processor
-    state.realtime.processor.clone().start(pool.clone());
+    let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    state.realtime.processor.clone().start(pool.clone(), shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);
@@ -541,7 +542,9 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
     let sub_reply = wait_for_reply(&mut ws_client2_reconnected.reader, sub_id, 10).await;
     let sub_result = sub_reply
         .get("subscribe")
-        .expect("Expected subscription result");
+        .expect("Missing subscribe field in reply");
+
+    println!("DEBUG: sub_result = {:?}", sub_result);
 
     // Verify recovery was successful
     let recovered = sub_result

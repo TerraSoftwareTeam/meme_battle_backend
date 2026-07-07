@@ -21,7 +21,7 @@ use meme_battle_backend::{
     },
     features::game::{
         api::dto::{GameStateDto, ReadyRequest},
-        GameCard,
+        GameCard, GameMode, RoundPhase, GameRepository, GameRepositoryImpl,
     },
 };
 
@@ -51,6 +51,7 @@ async fn handle_mock_delete(Path(_id): Path<String>) -> Json<Value> {
 #[tokio::test]
 async fn test_full_game_flow_and_lock_lifecycle() {
     dotenvy::dotenv().ok();
+    let _ = tracing_subscriber::fmt::try_init();
 
     // 1. Spin up the mock CDN server
     let cdn_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -77,6 +78,7 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     let app_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let app_addr = app_listener.local_addr().unwrap();
     let state = build_app_state(pool.clone(), config);
+    let app_state = state.clone();
     let app = create_router(state);
     tokio::spawn(async move {
         axum::serve(app_listener, app).await.unwrap();
@@ -235,6 +237,80 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     let sit_body: RestApiResponse<Value> = create_sit_resp.json().await.unwrap();
     let sit_pack_id = Uuid::parse_str(sit_body.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
 
+    // --- TIMEOUT FLOW TEST (GAME 1) ---
+    let create_game_payload_timeout = json!({
+        "mode": "situation_to_meme",
+        "selected_situation_pack_ids": vec![sit_pack_id],
+        "selected_meme_pack_ids": vec![pack_id],
+        "max_rounds": 1,
+        "hand_size": 1
+    });
+    let create_game_resp_1 = client.post(format!("{}/games", base_url))
+        .bearer_auth(&token1)
+        .json(&create_game_payload_timeout)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_game_resp_1.status(), StatusCode::OK);
+    let game_resp_1: RestApiResponse<Value> = create_game_resp_1.json().await.unwrap();
+    let game_id_1 = Uuid::parse_str(game_resp_1.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+
+    // Join Players
+    client.post(format!("{}/games/{}/join", base_url, game_id_1)).bearer_auth(&token2).send().await.unwrap();
+    client.post(format!("{}/games/{}/join", base_url, game_id_1)).bearer_auth(&token3).send().await.unwrap();
+
+    // Ready All
+    client.post(format!("{}/games/{}/ready", base_url, game_id_1)).bearer_auth(&token1).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
+    client.post(format!("{}/games/{}/ready", base_url, game_id_1)).bearer_auth(&token2).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
+    client.post(format!("{}/games/{}/ready", base_url, game_id_1)).bearer_auth(&token3).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
+
+    // Start game
+    let start_resp_1 = client.post(format!("{}/games/{}/start", base_url, game_id_1))
+        .bearer_auth(&token1)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(start_resp_1.status(), StatusCode::OK);
+
+    // Get current round
+    let state_resp_1 = client.get(format!("{}/games/{}/state", base_url, game_id_1)).bearer_auth(&token1).send().await.unwrap();
+    let state_dto_1: RestApiResponse<GameStateDto> = state_resp_1.json().await.unwrap();
+    let state_1 = state_dto_1.0.data.unwrap();
+    let round_id_1 = state_1.round.as_ref().unwrap().id;
+
+    // Manually set phase_expires_at to the past in DB to trigger timeout
+    sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
+        .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
+        .bind(round_id_1)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Trigger background worker process step
+    app_state.game.process_timeout.execute(round_id_1).await.unwrap();
+
+    // Fetch state again and verify it is in Voting phase
+    let state_resp_voting = client.get(format!("{}/games/{}/state", base_url, game_id_1)).bearer_auth(&token1).send().await.unwrap();
+    let state_dto_voting: RestApiResponse<GameStateDto> = state_resp_voting.json().await.unwrap();
+    let state_voting = state_dto_voting.0.data.unwrap();
+    assert_eq!(state_voting.round.as_ref().unwrap().phase, RoundPhase::Voting);
+
+    // Manually set voting phase_expires_at to the past to trigger timeout
+    sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
+        .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
+        .bind(round_id_1)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Trigger background worker process step again
+    app_state.game.process_timeout.execute(round_id_1).await.unwrap();
+
+    // Verify game status is finished
+    let game_row_1 = sqlx::query("SELECT status::text as status FROM games WHERE id = $1").bind(game_id_1).fetch_one(&pool).await.unwrap();
+    assert_eq!(game_row_1.get::<String, _>("status"), "finished");
+    // --- END TIMEOUT FLOW TEST (GAME 1) ---
+
     // 10. Create Game
     let create_game_payload = json!({
         "mode": "situation_to_meme",
@@ -373,3 +449,290 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .unwrap();
     assert_eq!(final_del_sit_pack_resp.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn test_timer_and_concurrency_edge_cases() {
+    dotenvy::dotenv().ok();
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let mut config = Config::from_env().unwrap();
+    config.hackclub_cdn_base_url = "http://127.0.0.1:9999".to_string();
+
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .min_connections(1)
+        .connect(&config.database_url)
+        .await
+        .unwrap();
+    run_database_migrations(&pool).await.unwrap();
+
+    let state = build_app_state(pool.clone(), config);
+    
+    let test_start = chrono::Utc::now();
+    sqlx::query("DELETE FROM games WHERE created_at < $1")
+        .bind(test_start)
+        .execute(&pool)
+        .await
+        .unwrap();
+    
+    // 1. Setup mock users
+    let user_id1 = Uuid::new_v4();
+    let user_id2 = Uuid::new_v4();
+    let user_id3 = Uuid::new_v4();
+    let handle1 = format!("handle_{}", Uuid::new_v4().simple());
+    let handle2 = format!("handle_{}", Uuid::new_v4().simple());
+    let handle3 = format!("handle_{}", Uuid::new_v4().simple());
+    
+    sqlx::query("INSERT INTO users (id, username, handle, role) VALUES ($1, 'user1', $4, 'user'), ($2, 'user2', $5, 'user'), ($3, 'user3', $6, 'user')")
+        .bind(user_id1)
+        .bind(user_id2)
+        .bind(user_id3)
+        .bind(handle1)
+        .bind(handle2)
+        .bind(handle3)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // 2. Create situation pack & meme pack
+    let sit_pack_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO situation_packs (id, author_id, name, language_code) VALUES ($1, $2, 'Pack', 'ru')")
+        .bind(sit_pack_id)
+        .bind(user_id1)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO pack_situations (id, pack_id, prompt_text) VALUES ($1, $2, 'Prompt 1'), ($3, $2, 'Prompt 2')")
+        .bind(Uuid::new_v4())
+        .bind(sit_pack_id)
+        .bind(Uuid::new_v4())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let meme_pack_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO meme_packs (id, author_id, name, language_code) VALUES ($1, $2, 'Pack', 'ru')")
+        .bind(meme_pack_id)
+        .bind(user_id1)
+        .execute(&pool)
+        .await
+        .unwrap();
+        
+    let media_id1 = chrono::Utc::now().timestamp_millis() * 1000 + (rand::random::<i32>().abs() % 1000) as i64;
+    let media_id2 = media_id1 + 1;
+    let media_id3 = media_id1 + 2;
+    let media_id4 = media_id1 + 3;
+    let media_id5 = media_id1 + 4;
+    let media_id6 = media_id1 + 5;
+    let file_id1 = format!("f_{}", Uuid::new_v4().simple());
+    let file_id2 = format!("f_{}", Uuid::new_v4().simple());
+    let file_id3 = format!("f_{}", Uuid::new_v4().simple());
+    let file_id4 = format!("f_{}", Uuid::new_v4().simple());
+    let file_id5 = format!("f_{}", Uuid::new_v4().simple());
+    let file_id6 = format!("f_{}", Uuid::new_v4().simple());
+    sqlx::query("INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility) VALUES ($1, $7, 'hackclub_cdn', $8, 'http://url1', 'f1', 'image/png', 10, 'attached', 'public'), ($2, $7, 'hackclub_cdn', $9, 'http://url2', 'f2', 'image/png', 10, 'attached', 'public'), ($3, $7, 'hackclub_cdn', $10, 'http://url3', 'f3', 'image/png', 10, 'attached', 'public'), ($4, $7, 'hackclub_cdn', $11, 'http://url4', 'f4', 'image/png', 10, 'attached', 'public'), ($5, $7, 'hackclub_cdn', $12, 'http://url5', 'f5', 'image/png', 10, 'attached', 'public'), ($6, $7, 'hackclub_cdn', $13, 'http://url6', 'f6', 'image/png', 10, 'attached', 'public')")
+        .bind(media_id1)
+        .bind(media_id2)
+        .bind(media_id3)
+        .bind(media_id4)
+        .bind(media_id5)
+        .bind(media_id6)
+        .bind(user_id1)
+        .bind(file_id1)
+        .bind(file_id2)
+        .bind(file_id3)
+        .bind(file_id4)
+        .bind(file_id5)
+        .bind(file_id6)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let pack_meme_id1 = Uuid::new_v4();
+    let pack_meme_id2 = Uuid::new_v4();
+    let pack_meme_id3 = Uuid::new_v4();
+    let pack_meme_id4 = Uuid::new_v4();
+    let pack_meme_id5 = Uuid::new_v4();
+    let pack_meme_id6 = Uuid::new_v4();
+    sqlx::query("INSERT INTO pack_memes (id, pack_id, media_id) VALUES ($1, $2, $3), ($4, $5, $6), ($7, $8, $9), ($10, $11, $12), ($13, $14, $15), ($16, $17, $18)")
+        .bind(pack_meme_id1).bind(meme_pack_id).bind(media_id1)
+        .bind(pack_meme_id2).bind(meme_pack_id).bind(media_id2)
+        .bind(pack_meme_id3).bind(meme_pack_id).bind(media_id3)
+        .bind(pack_meme_id4).bind(meme_pack_id).bind(media_id4)
+        .bind(pack_meme_id5).bind(meme_pack_id).bind(media_id5)
+        .bind(pack_meme_id6).bind(meme_pack_id).bind(media_id6)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let repo = GameRepositoryImpl::new(pool.clone());
+
+    // 3. Create Game
+    let game = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1).await.unwrap();
+    state.game.join_game.execute(user_id2, game.id).await.unwrap();
+    state.game.join_game.execute(user_id3, game.id).await.unwrap();
+    state.game.set_ready.execute(user_id1, game.id, true).await.unwrap();
+    state.game.set_ready.execute(user_id2, game.id, true).await.unwrap();
+    state.game.set_ready.execute(user_id3, game.id, true).await.unwrap();
+    state.game.start_game.execute(user_id1, game.id).await.unwrap();
+
+    let round = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().round.unwrap();
+
+    // Test Case 1: Stale Lease Takeover
+    let worker_a = Uuid::new_v4();
+    let worker_b = Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    sqlx::query("UPDATE game_rounds SET phase_expires_at = $1, claimed_at = $2, claimed_by = $3 WHERE id = $4")
+        .bind(now - chrono::Duration::seconds(10))
+        .bind(now - chrono::Duration::seconds(40))
+        .bind(worker_a)
+        .bind(round.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let round_b = state.game.timer_worker.process_single_expired_round(worker_b).await.unwrap();
+    assert!(round_b, "Worker B should take over the stale lease");
+
+    // Test Case 2: Concurrency Guard
+    let state_voting = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().round.unwrap();
+    assert_eq!(state_voting.phase, RoundPhase::Voting);
+
+    state.game.process_timeout.execute(round.id).await.unwrap();
+
+    let state_after_late_call = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().round.unwrap();
+    assert_eq!(state_after_late_call.phase, RoundPhase::Voting);
+
+    // Test Case 3: Empty Hand Auto-submission skip
+    let game_empty = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1).await.unwrap();
+    state.game.join_game.execute(user_id2, game_empty.id).await.unwrap();
+    state.game.join_game.execute(user_id3, game_empty.id).await.unwrap();
+    state.game.set_ready.execute(user_id1, game_empty.id, true).await.unwrap();
+    state.game.set_ready.execute(user_id2, game_empty.id, true).await.unwrap();
+    state.game.set_ready.execute(user_id3, game_empty.id, true).await.unwrap();
+    state.game.start_game.execute(user_id1, game_empty.id).await.unwrap();
+
+    let round_empty = state.game.get_game_state.execute(user_id1, game_empty.id).await.unwrap().round.unwrap();
+
+    sqlx::query("DELETE FROM game_player_hand WHERE game_id = $1 AND user_id = $2")
+        .bind(game_empty.id)
+        .bind(user_id2)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
+        .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
+        .bind(round_empty.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    state.game.process_timeout.execute(round_empty.id).await.unwrap();
+
+    let state_voting_empty = state.game.get_game_state.execute(user_id1, game_empty.id).await.unwrap().round.unwrap();
+    assert_eq!(state_voting_empty.phase, RoundPhase::Voting);
+
+    // Test Case 4: Zero-Votes Timeout (Nullable Winner)
+    sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
+        .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
+        .bind(round_empty.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    state.game.process_timeout.execute(round_empty.id).await.unwrap();
+
+    let game_empty_status = sqlx::query("SELECT status::text as status FROM games WHERE id = $1")
+        .bind(game_empty.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<String, _>("status");
+    assert_eq!(game_empty_status, "finished");
+
+    let round_winner = sqlx::query("SELECT winner_user_id FROM game_rounds WHERE id = $1")
+        .bind(round_empty.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<Option<Uuid>, _>("winner_user_id");
+    assert!(round_winner.is_none(), "Round winner should be None when there are no votes");
+
+    // Test Case 5: Partial Submissions Auto-Submit
+    let game_partial = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1).await.unwrap();
+    state.game.join_game.execute(user_id2, game_partial.id).await.unwrap();
+    state.game.join_game.execute(user_id3, game_partial.id).await.unwrap();
+    state.game.set_ready.execute(user_id1, game_partial.id, true).await.unwrap();
+    state.game.set_ready.execute(user_id2, game_partial.id, true).await.unwrap();
+    state.game.set_ready.execute(user_id3, game_partial.id, true).await.unwrap();
+    state.game.start_game.execute(user_id1, game_partial.id).await.unwrap();
+
+    let round_partial = state.game.get_game_state.execute(user_id1, game_partial.id).await.unwrap().round.unwrap();
+
+    let hand1 = state.game.get_game_state.execute(user_id1, game_partial.id).await.unwrap().my_hand;
+    let card_id = match &hand1[0] {
+        GameCard::Meme { id, .. } => *id,
+        GameCard::Situation { id, .. } => *id,
+    };
+    state.game.submit_card.execute(user_id1, game_partial.id, round_partial.id, card_id).await.unwrap();
+
+    sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
+        .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
+        .bind(round_partial.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    state.game.process_timeout.execute(round_partial.id).await.unwrap();
+
+    let round_partial_after = state.game.get_game_state.execute(user_id1, game_partial.id).await.unwrap().round.unwrap();
+    assert_eq!(round_partial_after.phase, RoundPhase::Voting);
+
+    let submission_count = sqlx::query("SELECT COUNT(*) FROM round_submissions WHERE round_id = $1")
+        .bind(round_partial.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<i64, _>(0);
+    assert_eq!(submission_count, 3, "All 3 players should have submissions (2 auto-submitted)");
+
+    // Test Case 6: Concurrent Lease Claim Protection
+    let game_lease = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1).await.unwrap();
+    state.game.join_game.execute(user_id2, game_lease.id).await.unwrap();
+    state.game.join_game.execute(user_id3, game_lease.id).await.unwrap();
+    state.game.set_ready.execute(user_id1, game_lease.id, true).await.unwrap();
+    state.game.set_ready.execute(user_id2, game_lease.id, true).await.unwrap();
+    state.game.set_ready.execute(user_id3, game_lease.id, true).await.unwrap();
+    state.game.start_game.execute(user_id1, game_lease.id).await.unwrap();
+
+    let round_lease = state.game.get_game_state.execute(user_id1, game_lease.id).await.unwrap().round.unwrap();
+
+    sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
+        .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
+        .bind(round_lease.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let now_lease = chrono::Utc::now();
+    let stale_timeout_lease = now_lease - chrono::Duration::seconds(30);
+    let worker_a_lease = Uuid::new_v4();
+    let worker_b_lease = Uuid::new_v4();
+
+    let claim_a = repo.claim_next_expired_round(worker_a_lease, now_lease, stale_timeout_lease).await.unwrap();
+    assert!(claim_a.is_some(), "Worker A should successfully claim the round");
+    assert_eq!(claim_a.unwrap().id, round_lease.id);
+
+    let claim_b = repo.claim_next_expired_round(worker_b_lease, now_lease, stale_timeout_lease).await.unwrap();
+    assert!(claim_b.is_none(), "Worker B should fail to claim the round because Worker A holds an active lease");
+
+    let round_lease_db = sqlx::query("SELECT claimed_by FROM game_rounds WHERE id = $1")
+        .bind(round_lease.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(round_lease_db.get::<Option<Uuid>, _>("claimed_by"), Some(worker_a_lease));
+}
+

@@ -36,6 +36,14 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
 
     // 4. Start the application router on an ephemeral port
     let state = build_app_state(pool.clone(), config.clone());
+
+    let test_start = chrono::Utc::now();
+    sqlx::query("DELETE FROM games WHERE created_at < $1")
+        .bind(test_start)
+        .execute(&pool)
+        .await
+        .unwrap();
+
     let app_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let app_addr = app_listener.local_addr().unwrap();
     let app = create_router(state.clone());
@@ -44,7 +52,8 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
     });
 
     // 3. Start publisher outbox processor in tests
-    state.realtime.processor.clone().start(pool.clone());
+    let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    state.realtime.processor.clone().start(pool.clone(), shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);
@@ -215,4 +224,124 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
         received_ready_broadcast,
         "Did not receive PlayerReadyChanged event via WebSocket"
     );
+}
+
+#[tokio::test]
+async fn test_ws_token_endpoint_auth_and_permissions() {
+    dotenvy::dotenv().ok();
+    let _ = tracing_subscriber::fmt::try_init();
+
+    // 1. Load configuration
+    let config = Config::from_env().unwrap();
+
+    // 2. Connect to the test DB and run migrations
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .min_connections(1)
+        .connect(&config.database_url)
+        .await
+        .unwrap();
+    run_database_migrations(&pool).await.unwrap();
+
+    // 3. Start the application router on an ephemeral port
+    let state = build_app_state(pool.clone(), config.clone());
+
+    let test_start = chrono::Utc::now();
+    sqlx::query("DELETE FROM games WHERE created_at < $1")
+        .bind(test_start)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let app_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let app_addr = app_listener.local_addr().unwrap();
+    let app = create_router(state.clone());
+    tokio::spawn(async move {
+        axum::serve(app_listener, app).await.unwrap();
+    });
+
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}", app_addr);
+
+    // Register Player 1 & Player 2
+    let resp1 = client.post(format!("{}/auth/guest", base_url)).send().await.unwrap();
+    let body1: RestApiResponse<Value> = resp1.json().await.unwrap();
+    let token1 = body1.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    let resp2 = client.post(format!("{}/auth/guest", base_url)).send().await.unwrap();
+    let body2: RestApiResponse<Value> = resp2.json().await.unwrap();
+    let token2 = body2.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    // Create a game with Player 1 (Player 2 is NOT joined yet)
+    let create_game_payload = json!({
+        "mode": "situation_to_meme",
+        "selected_situation_pack_ids": Vec::<Uuid>::new(),
+        "selected_meme_pack_ids": Vec::<Uuid>::new(),
+        "max_rounds": 3,
+        "hand_size": 5
+    });
+    let create_game_resp = client
+        .post(format!("{}/games", base_url))
+        .bearer_auth(&token1)
+        .json(&create_game_payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_game_resp.status(), StatusCode::OK);
+    let game_resp: RestApiResponse<Value> = create_game_resp.json().await.unwrap();
+    let game_id = Uuid::parse_str(game_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+
+    // Test Case A: Get WS token without auth header -> should fail with 401 Unauthorized
+    let resp_no_auth = client
+        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_no_auth.status(), StatusCode::UNAUTHORIZED);
+
+    // Test Case B: Get WS token with invalid token -> should fail with 401 Unauthorized
+    let resp_bad_token = client
+        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .bearer_auth("invalid-token-string")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_bad_token.status(), StatusCode::UNAUTHORIZED);
+
+    // Test Case C: Get WS token for non-existent game -> should fail with 404 Not Found
+    let random_game_id = Uuid::new_v4();
+    let resp_not_found = client
+        .get(format!("{}/games/{}/ws-token", base_url, random_game_id))
+        .bearer_auth(&token1)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_not_found.status(), StatusCode::NOT_FOUND);
+
+    // Test Case D: Get WS token for game Player 2 is not joined to -> should fail with 403 Forbidden
+    let resp_forbidden = client
+        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .bearer_auth(&token2)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_forbidden.status(), StatusCode::FORBIDDEN);
+
+    // Now let Player 2 join the game
+    let join_resp = client
+        .post(format!("{}/games/{}/join", base_url, game_id))
+        .bearer_auth(&token2)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(join_resp.status(), StatusCode::OK);
+
+    // Test Case E: Get WS token for game Player 2 is now joined to -> should succeed
+    let resp_success = client
+        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .bearer_auth(&token2)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_success.status(), StatusCode::OK);
 }

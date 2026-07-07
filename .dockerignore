@@ -1,0 +1,8 @@
+target/
+.git/
+.mimocode/
+.DS_Store
+*.log
+*.tmp
+.env
+.env.*

@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
 
 use crate::{
     common::http::error::AppError,
@@ -30,7 +32,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_game(&self, game_id: Uuid) -> Result<Option<Game>, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
-            SELECT id, host_id, mode, status, max_rounds, hand_size, current_round, version, started_at, finished_at, created_at
+            SELECT id, host_id, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             FROM games
             WHERE id = $1
             "#,
@@ -123,6 +125,7 @@ impl GameRepository for GameRepositoryImpl {
             meme_id: Option<Uuid>,
             situation_id: Option<Uuid>,
             media_id: Option<i64>,
+            text: Option<String>,
         }
 
         let rows = sqlx::query_as::<_, RawRow>(
@@ -130,9 +133,11 @@ impl GameRepository for GameRepositoryImpl {
             SELECT
                 gph.meme_id,
                 gph.situation_id,
-                pm.media_id
+                pm.media_id,
+                ps.prompt_text AS text
             FROM game_player_hand gph
             LEFT JOIN pack_memes pm ON gph.meme_id = pm.id
+            LEFT JOIN pack_situations ps ON gph.situation_id = ps.id
             WHERE gph.game_id = $1 AND gph.user_id = $2 AND gph.is_used = false
             "#,
         )
@@ -149,12 +154,14 @@ impl GameRepository for GameRepositoryImpl {
                         id: meme_id,
                         kind: "meme".to_string(),
                         media_id: row.media_id,
+                        text: None,
                     }
                 } else {
                     GamePlayerHandCardWithMedia {
                         id: row.situation_id.unwrap(),
                         kind: "situation".to_string(),
                         media_id: None,
+                        text: row.text,
                     }
                 }
             })
@@ -166,7 +173,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn get_current_round(&self, game_id: Uuid) -> Result<Option<GameRound>, AppError> {
         let round = sqlx::query_as::<_, GameRound>(
             r#"
-            SELECT gr.id, gr.game_id, gr.round_number, gr.prompt_situation_id, gr.prompt_meme_id, gr.phase, gr.winner_user_id, gr.created_at
+            SELECT gr.id, gr.game_id, gr.round_number, gr.prompt_situation_id, gr.prompt_meme_id, gr.phase, gr.winner_user_id, gr.phase_expires_at, gr.claimed_at, gr.claimed_by, gr.created_at
             FROM game_rounds gr
             JOIN games g ON gr.game_id = g.id
             WHERE gr.game_id = $1 AND gr.round_number = g.current_round
@@ -182,7 +189,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn get_round(&self, round_id: Uuid) -> Result<Option<GameRound>, AppError> {
         let round = sqlx::query_as::<_, GameRound>(
             r#"
-            SELECT id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, created_at
+            SELECT id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, phase_expires_at, claimed_at, claimed_by, created_at
             FROM game_rounds
             WHERE id = $1
             "#,
@@ -356,7 +363,7 @@ impl GameRepository for GameRepositoryImpl {
             r#"
             INSERT INTO games (host_id, mode, max_rounds, hand_size, status, version)
             VALUES ($1, $2, $3, $4, 'lobby', 1)
-            RETURNING id, host_id, mode, status, max_rounds, hand_size, current_round, version, started_at, finished_at, created_at
+            RETURNING id, host_id, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             "#,
         )
         .bind(host_id)
@@ -418,7 +425,7 @@ impl GameRepository for GameRepositoryImpl {
     ) -> Result<Option<Game>, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
-            SELECT id, host_id, mode, status, max_rounds, hand_size, current_round, version, started_at, finished_at, created_at
+            SELECT id, host_id, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             FROM games
             WHERE id = $1
             FOR UPDATE
@@ -525,7 +532,7 @@ impl GameRepository for GameRepositoryImpl {
     ) -> Result<Option<GameRound>, AppError> {
         let round = sqlx::query_as::<_, GameRound>(
             r#"
-            SELECT id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, created_at
+            SELECT id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, phase_expires_at, claimed_at, claimed_by, created_at
             FROM game_rounds
             WHERE id = $1
             FOR UPDATE
@@ -546,12 +553,13 @@ impl GameRepository for GameRepositoryImpl {
         prompt_situation_id: Option<Uuid>,
         prompt_meme_id: Option<Uuid>,
         phase: RoundPhase,
+        phase_expires_at: Option<DateTime<Utc>>,
     ) -> Result<GameRound, AppError> {
         let round = sqlx::query_as::<_, GameRound>(
             r#"
-            INSERT INTO game_rounds (game_id, round_number, prompt_situation_id, prompt_meme_id, phase)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, created_at
+            INSERT INTO game_rounds (game_id, round_number, prompt_situation_id, prompt_meme_id, phase, phase_expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, phase_expires_at, claimed_at, claimed_by, created_at
             "#,
         )
         .bind(game_id)
@@ -559,6 +567,7 @@ impl GameRepository for GameRepositoryImpl {
         .bind(prompt_situation_id)
         .bind(prompt_meme_id)
         .bind(phase)
+        .bind(phase_expires_at)
         .fetch_one(&mut **tx)
         .await?;
 
@@ -679,16 +688,18 @@ impl GameRepository for GameRepositoryImpl {
         tx: &mut Transaction<'_, Postgres>,
         round_id: Uuid,
         phase: RoundPhase,
+        phase_expires_at: Option<DateTime<Utc>>,
     ) -> Result<(), AppError> {
         sqlx::query(
             r#"
             UPDATE game_rounds
-            SET phase = $2
+            SET phase = $2, phase_expires_at = $3, claimed_at = NULL, claimed_by = NULL
             WHERE id = $1
             "#,
         )
         .bind(round_id)
         .bind(phase)
+        .bind(phase_expires_at)
         .execute(&mut **tx)
         .await?;
 
@@ -699,13 +710,13 @@ impl GameRepository for GameRepositoryImpl {
         &self,
         tx: &mut Transaction<'_, Postgres>,
         round_id: Uuid,
-        winner_user_id: Uuid,
+        winner_user_id: Option<Uuid>,
         phase: RoundPhase,
     ) -> Result<(), AppError> {
         sqlx::query(
             r#"
             UPDATE game_rounds
-            SET winner_user_id = $2, phase = $3
+            SET winner_user_id = $2, phase = $3, phase_expires_at = NULL, claimed_at = NULL, claimed_by = NULL
             WHERE id = $1
             "#,
         )
@@ -833,6 +844,99 @@ impl GameRepository for GameRepositoryImpl {
 
         Ok(results)
     }
+
+    async fn get_round_scoreboard(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        round_id: Uuid,
+    ) -> Result<Vec<(Uuid, i32)>, AppError> {
+        #[derive(sqlx::FromRow)]
+        struct RoundScoreRow {
+            user_id: Uuid,
+            vote_count: i64,
+        }
+
+        let rows = sqlx::query_as::<_, RoundScoreRow>(
+            r#"
+            SELECT gp.user_id, COUNT(rv.voter_id) AS vote_count
+            FROM game_players gp
+            LEFT JOIN round_submissions rs ON rs.round_id = $2 AND rs.user_id = gp.user_id
+            LEFT JOIN round_votes rv ON rv.round_id = $2 AND rv.submission_id = rs.id
+            WHERE gp.game_id = $1
+            GROUP BY gp.user_id, gp.joined_at
+            ORDER BY gp.joined_at ASC
+            "#,
+        )
+        .bind(game_id)
+        .bind(round_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        let results = rows
+            .into_iter()
+            .map(|row| (row.user_id, row.vote_count as i32))
+            .collect();
+
+        Ok(results)
+    }
+
+    async fn get_prompt_details(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        prompt_kind: &str,
+        prompt_id: Uuid,
+    ) -> Result<(Option<i64>, Option<String>), AppError> {
+        if prompt_kind == "situation" {
+            #[derive(sqlx::FromRow)]
+            struct PromptTextRow {
+                prompt_text: String,
+            }
+
+            let row = sqlx::query_as::<_, PromptTextRow>(
+                r#"
+                SELECT prompt_text
+                FROM pack_situations
+                WHERE id = $1
+                "#,
+            )
+            .bind(prompt_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+
+            if let Some(r) = row {
+                Ok((None, Some(r.prompt_text)))
+            } else {
+                Err(AppError::NotFound("Situation prompt not found".to_string()))
+            }
+        } else if prompt_kind == "meme" {
+            #[derive(sqlx::FromRow)]
+            struct PromptMemeRow {
+                media_id: Option<i64>,
+            }
+
+            let row = sqlx::query_as::<_, PromptMemeRow>(
+                r#"
+                SELECT media_id
+                FROM pack_memes
+                WHERE id = $1
+                "#,
+            )
+            .bind(prompt_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+
+            if let Some(r) = row {
+                Ok((r.media_id, None))
+            } else {
+                Err(AppError::NotFound("Meme prompt not found".to_string()))
+            }
+        } else {
+            Err(AppError::ValidationError(format!("Invalid prompt kind: {}", prompt_kind)))
+        }
+    }
+
+
 
     async fn insert_game_event(
         &self,
@@ -1406,16 +1510,18 @@ impl GameRepository for GameRepositoryImpl {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
         round_number: i32,
+        phase_expires_at: Option<DateTime<Utc>>,
     ) -> Result<(), AppError> {
         sqlx::query(
             r#"
             UPDATE game_rounds
-            SET phase = 'submitting'
+            SET phase = 'submitting', phase_expires_at = $3, claimed_at = NULL, claimed_by = NULL
             WHERE game_id = $1 AND round_number = $2
             "#,
         )
         .bind(game_id)
         .bind(round_number)
+        .bind(phase_expires_at)
         .execute(&mut **tx)
         .await?;
 
@@ -1564,4 +1670,59 @@ impl GameRepository for GameRepositoryImpl {
 
         Ok(locked)
     }
+
+    async fn get_unused_hand_cards(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<GamePlayerHandCard>, AppError> {
+        let cards = sqlx::query_as::<_, GamePlayerHandCard>(
+            r#"
+            SELECT id, game_id, user_id, meme_id, situation_id, is_used
+            FROM game_player_hand
+            WHERE game_id = $1 AND user_id = $2 AND is_used = false
+            "#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(cards)
+    }
+
+    async fn claim_next_expired_round(
+        &self,
+        worker_id: Uuid,
+        now: DateTime<Utc>,
+        stale_timeout: DateTime<Utc>,
+    ) -> Result<Option<GameRound>, AppError> {
+        let round = sqlx::query_as::<_, GameRound>(
+            r#"
+            UPDATE game_rounds
+            SET claimed_at = $1, claimed_by = $2
+            WHERE id IN (
+                SELECT id
+                FROM game_rounds
+                WHERE phase IN ('submitting', 'voting')
+                  AND phase_expires_at <= $3
+                  AND (claimed_at IS NULL OR claimed_at < $4)
+                ORDER BY phase_expires_at ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            RETURNING id, game_id, round_number, prompt_situation_id, prompt_meme_id, phase, winner_user_id, phase_expires_at, claimed_at, claimed_by, created_at
+            "#,
+        )
+        .bind(now)
+        .bind(worker_id)
+        .bind(now)
+        .bind(stale_timeout)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(round)
+    }
 }
+

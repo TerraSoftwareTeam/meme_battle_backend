@@ -102,12 +102,14 @@ impl StartGameCommand {
         // 6. Lay out and save content
         match game.mode {
             GameMode::SituationToMeme => {
+                let round_1_deadline = Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64);
                 // R situations -> rounds
                 for i in 1..=r {
                     let prompt_situation_id = shuffled_situations[(i - 1) as usize];
                     let phase = if i == 1 { RoundPhase::Submitting } else { RoundPhase::Waiting };
+                    let phase_expires_at = if i == 1 { Some(round_1_deadline) } else { None };
                     let round = self.repo
-                        .insert_round(&mut tx, game_id, i, Some(prompt_situation_id), None, phase)
+                        .insert_round(&mut tx, game_id, i, Some(prompt_situation_id), None, phase, phase_expires_at)
                         .await?;
 
                     if i == 1 {
@@ -148,12 +150,14 @@ impl StartGameCommand {
                 }
             }
             GameMode::MemeToSituation => {
+                let round_1_deadline = Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64);
                 // R memes -> rounds
                 for i in 1..=r {
                     let prompt_meme_id = shuffled_memes[(i - 1) as usize];
                     let phase = if i == 1 { RoundPhase::Submitting } else { RoundPhase::Waiting };
+                    let phase_expires_at = if i == 1 { Some(round_1_deadline) } else { None };
                     let round = self.repo
-                        .insert_round(&mut tx, game_id, i, None, Some(prompt_meme_id), phase)
+                        .insert_round(&mut tx, game_id, i, None, Some(prompt_meme_id), phase, phase_expires_at)
                         .await?;
 
                     if i == 1 {
@@ -230,9 +234,14 @@ impl StartGameCommand {
             GameMode::SituationToMeme => round1.prompt_situation_id.unwrap(),
             GameMode::MemeToSituation => round1.prompt_meme_id.unwrap(),
         };
+        let (prompt_media_id, prompt_text) = self
+            .repo
+            .get_prompt_details(&mut tx, &prompt_kind, prompt_id)
+            .await?;
 
+        let round_1_deadline = round1.phase_expires_at.unwrap_or_else(|| Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64));
         self.notification_sender
-            .notify_round_started(&mut tx, game_id, round1.id, 1, prompt_kind, prompt_id, new_version)
+            .notify_round_started(&mut tx, game_id, round1.id, 1, prompt_kind, prompt_media_id, prompt_text, round_1_deadline, new_version)
             .await?;
 
         // For each player, send hand updated event

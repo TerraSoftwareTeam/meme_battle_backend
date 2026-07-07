@@ -17,7 +17,7 @@ impl OutboxProcessor {
     }
 
     /// Start the background worker loop that handles database notifications and periodic retries
-    pub fn start(self: Arc<Self>, pool: PgPool) {
+    pub fn start(self: Arc<Self>, pool: PgPool, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) -> tokio::task::JoinHandle<()> {
         info!("Starting unified realtime outbox processor with PostgreSQL LISTEN/NOTIFY");
         tokio::spawn(async move {
             let mut retry_ticker = tokio::time::interval(Duration::from_secs(5));
@@ -26,7 +26,16 @@ impl OutboxProcessor {
             let mut listener = Self::connect_listener(&pool).await;
 
             loop {
+                if *shutdown_rx.borrow() {
+                    info!("Shutdown signal received, stopping outbox processor");
+                    break;
+                }
+
                 let (run_pending, run_retry) = tokio::select! {
+                    _ = shutdown_rx.changed() => {
+                        info!("Shutdown signal received, stopping outbox processor");
+                        break;
+                    }
                     notification = async {
                         if let Some(ref mut l) = listener {
                             Some(l.recv().await)
@@ -73,7 +82,7 @@ impl OutboxProcessor {
                     }
                 }
             }
-        });
+        })
     }
 
     async fn connect_listener(pool: &PgPool) -> Option<PgListener> {
