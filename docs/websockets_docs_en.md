@@ -17,7 +17,7 @@ sequenceDiagram
     Client->>API: GET /games/{id}/ws-token (Bearer auth)
     API-->>Client: Returns connection and subscription tokens
     
-    Client->>WS: Connect to ws://<host>:8000/connection/websocket
+    Client->>WS: Connect to wss://realtime.meme.skyfly.hackclub.app/connection/websocket
     Client->>WS: Send "connect" command with connection_token
     WS-->>Client: Connection success acknowledgment (ack)
     
@@ -57,6 +57,9 @@ All client WebSocket connections and channel subscriptions require authorization
 Centrifugo protocol messages are sent and received as JSON strings over the established WebSocket connection. Every sent command must contain a unique integer identifier `id`, which will be returned in the acknowledgment response.
 
 ### Establishing Connection
+To establish a connection, use the following endpoints:
+* `wss://realtime.meme.skyfly.hackclub.app/connection/websocket`
+
 After opening the WebSocket connection, send the `connect` frame:
 ```json
 {

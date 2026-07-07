@@ -17,7 +17,7 @@ sequenceDiagram
     Client->>API: GET /games/{id}/ws-token (Bearer auth)
     API-->>Client: Возвращает токены подключения и подписки
     
-    Client->>WS: Подключение к ws://<host>:8000/connection/websocket
+    Client->>WS: Подключение к wss://realtime.meme.skyfly.hackclub.app/connection/websocket
     Client->>WS: Отправка команды "connect" с connection_token
     WS-->>Client: Подтверждение успешного подключения (ack)
     
@@ -57,6 +57,9 @@ sequenceDiagram
 Сообщения протокола Centrifugo отправляются и принимаются как JSON-строки по открытому WebSocket-подключению. Каждая отправляемая команда должна содержать уникальный целочисленный идентификатор `id`, который вернется в ответе-подтверждении.
 
 ### Установка соединения
+Для установки соединения используйте следующие адреса:
+* `wss://realtime.meme.skyfly.hackclub.app/connection/websocket`
+
 После открытия WebSocket-соединения отправьте фрейм `connect`:
 ```json
 {
