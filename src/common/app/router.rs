@@ -108,19 +108,13 @@ pub fn create_router(state: AppState) -> Router {
                 })
                 .on_response(
                     |response: &axum::http::Response<_>,
-                     latency: std::time::Duration,
+                     _latency: std::time::Duration,
                      span: &tracing::Span| {
                         let status_code = response.status().as_u16();
                         span.record("status_code", status_code);
                         if status_code >= 400 {
                             span.record("error", true);
                         }
-
-                        tracing::info!(
-                            "request completed: status = {status}, latency = {latency:?}",
-                            status = status_code,
-                            latency = latency
-                        );
                      },
                 ),
         )
@@ -234,6 +228,23 @@ where
 /// and adds it to the HTTP response headers.
 async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
     let generated_uuid = uuid::Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+
+    // Extract request info for logging later
+    let method = req.method().clone();
+    let uri = req.uri().path().to_string();
+    let user_agent = req.headers()
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let client_ip = req.headers()
+        .get("x-forwarded-for")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(|s| s.trim())
+        .unwrap_or("")
+        .to_string();
 
     // Bind the generated UUID to the task-local variable
     let (mut res, final_request_id) = crate::common::http::dto::REQUEST_ID.scope(generated_uuid.clone(), async move {
@@ -248,6 +259,26 @@ async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
 
         (res, final_request_id)
     }).await;
+
+    let latency = start_time.elapsed();
+    let status_code = res.status().as_u16();
+
+    // Log the request completion with all fields explicitly on the event.
+    // This allows OTel tracing bridge to attach them as attributes to the log record,
+    // which makes them available as structured metadata in Loki.
+    tracing::info!(
+        status = status_code,
+        latency_ms = latency.as_secs_f64() * 1000.0,
+        method = %method,
+        uri = %uri,
+        user_agent = %user_agent,
+        client_ip = %client_ip,
+        request_id = %final_request_id,
+        "request completed: status = {status}, latency = {latency:?}, user_agent = \"{user_agent}\"",
+        status = status_code,
+        latency = latency,
+        user_agent = user_agent
+    );
 
     // Inject the request ID into the response headers
     if let Ok(hdr_val) = axum::http::HeaderValue::from_str(&final_request_id) {
