@@ -24,6 +24,8 @@ pub struct Config {
 
     pub centrifugo_api_url: String,
     pub centrifugo_api_key: String,
+    
+    pub max_file_size_mb: u32,
 }
 
 #[derive(Debug, Error)]
@@ -64,6 +66,8 @@ impl Config {
                 .unwrap_or_else(|_| "http://localhost:8000/api".to_string()),
             centrifugo_api_key: env::var("CENTRIFUGO_API_KEY")
                 .unwrap_or_else(|_| "CHANGE_ME_API_KEY".to_string()),
+
+            max_file_size_mb: optional_u32_env("MAX_FILE_SIZE_MB", 35),
         };
 
         validate_sensitive_env("JWT_SECRET_KEY")?;

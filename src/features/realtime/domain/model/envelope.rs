@@ -18,6 +18,9 @@ pub enum RealtimeEventType {
     GameFinished,
     GameCancelled,
 
+    LobbyCreated,
+    LobbyUpdated,
+    LobbyRemoved,
     GameInvited,
     MatchmakingFound,
     HandUpdated,
@@ -148,6 +151,28 @@ pub struct SyncRequiredPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LobbyCreatedPayload {
+    pub id: Uuid,
+    pub host_id: Uuid,
+    pub mode: String,
+    pub max_rounds: i32,
+    pub hand_size: i32,
+    pub players_count: i32,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LobbyUpdatedPayload {
+    pub id: Uuid,
+    pub players_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LobbyRemovedPayload {
+    pub id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RealtimePayload {
     PlayerJoined(PlayerJoinedPayload),
@@ -163,6 +188,9 @@ pub enum RealtimePayload {
     SubmissionAccepted(SubmissionAcceptedPayload),
     SubmissionRejected(SubmissionRejectedPayload),
     SyncRequired(SyncRequiredPayload),
+    LobbyCreated(LobbyCreatedPayload),
+    LobbyUpdated(LobbyUpdatedPayload),
+    LobbyRemoved(LobbyRemovedPayload),
 }
 
 impl RealtimePayload {
@@ -181,6 +209,9 @@ impl RealtimePayload {
             RealtimePayload::SubmissionAccepted(_) => RealtimeEventType::SubmissionAccepted,
             RealtimePayload::SubmissionRejected(_) => RealtimeEventType::SubmissionRejected,
             RealtimePayload::SyncRequired(_) => RealtimeEventType::SyncRequired,
+            RealtimePayload::LobbyCreated(_) => RealtimeEventType::LobbyCreated,
+            RealtimePayload::LobbyUpdated(_) => RealtimeEventType::LobbyUpdated,
+            RealtimePayload::LobbyRemoved(_) => RealtimeEventType::LobbyRemoved,
         }
     }
 }

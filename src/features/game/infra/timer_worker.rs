@@ -233,6 +233,9 @@ mod tests {
         async fn notify_vote_received(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _round_id: Uuid, _voter_id: Uuid, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_round_finished(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _round_id: Uuid, _round_number: i32, _winner_user_id: Uuid, _scoreboard: Vec<(Uuid, i32)>, _round_scoreboard: Vec<(Uuid, i32)>, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_game_finished(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _winner_user_id: Uuid, _scoreboard: Vec<(Uuid, i32)>, _version: i64) -> Result<(), AppError> { todo!() }
+        async fn notify_lobby_created(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _host_id: Uuid, _mode: String, _max_rounds: i32, _hand_size: i32, _players_count: i32, _created_at: DateTime<Utc>) -> Result<(), AppError> { Ok(()) }
+        async fn notify_lobby_updated(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _players_count: i32) -> Result<(), AppError> { Ok(()) }
+        async fn notify_lobby_removed(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { Ok(()) }
     }
 
     #[tokio::test]

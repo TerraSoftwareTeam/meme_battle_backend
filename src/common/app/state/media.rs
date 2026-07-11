@@ -9,6 +9,7 @@ pub struct MediaState {
     pub upload_media: Arc<UploadMediaCommand>,
     pub get_media_asset_url: Arc<GetMediaAssetUrlQuery>,
     pub mark_media_attached: Arc<MarkMediaAttachedCommand>,
+    pub max_file_size_bytes: usize,
 }
 
 impl MediaState {
@@ -16,11 +17,13 @@ impl MediaState {
         upload_media: Arc<UploadMediaCommand>,
         get_media_asset_url: Arc<GetMediaAssetUrlQuery>,
         mark_media_attached: Arc<MarkMediaAttachedCommand>,
+        max_file_size_bytes: usize,
     ) -> Self {
         Self {
             upload_media,
             get_media_asset_url,
             mark_media_attached,
+            max_file_size_bytes,
         }
     }
 }

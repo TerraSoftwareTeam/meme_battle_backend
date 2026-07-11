@@ -4,20 +4,29 @@ use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
-    features::game::domain::{
-        model::{Game, GameMode},
-        ports::GameRepository,
+    features::game::{
+        application::ports::game_notification_sender::GameNotificationSender,
+        domain::{
+            model::{Game, GameMode},
+            ports::GameRepository,
+        },
     },
-
 };
 
 pub struct CreateGameCommand {
     repo: Arc<dyn GameRepository>,
+    notification_sender: Arc<dyn GameNotificationSender>,
 }
 
 impl CreateGameCommand {
-    pub fn new(repo: Arc<dyn GameRepository>) -> Self {
-        Self { repo }
+    pub fn new(
+        repo: Arc<dyn GameRepository>,
+        notification_sender: Arc<dyn GameNotificationSender>,
+    ) -> Self {
+        Self {
+            repo,
+            notification_sender,
+        }
     }
 
     pub async fn execute(
@@ -62,6 +71,15 @@ impl CreateGameCommand {
             }),
         )
         .await?;
+
+        let mode_str = match game.mode {
+            GameMode::SituationToMeme => "situation_to_meme".to_string(),
+            GameMode::MemeToSituation => "meme_to_situation".to_string(),
+        };
+
+        self.notification_sender
+            .notify_lobby_created(&mut tx, game.id, creator_id, mode_str, max_rounds, hand_size, 1, game.created_at)
+            .await?;
 
         tx.commit().await?;
 

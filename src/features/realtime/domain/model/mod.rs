@@ -6,4 +6,5 @@ pub use envelope::{
     VoteReceivedPayload, GameStartedPayload, RoundStartedPayload, SubmissionReceivedPayload,
     RoundFinishedPayload, GameFinishedPayload, HandUpdatedPayload, SubmissionAcceptedPayload,
     SubmissionRejectedPayload, SyncRequiredPayload,
+    LobbyCreatedPayload, LobbyUpdatedPayload, LobbyRemovedPayload,
 };

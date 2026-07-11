@@ -32,4 +32,8 @@ impl GameTokenGenerator for GameTokenGeneratorAdapter {
         let channel = format!("personal:#{}", user_id);
         self.token_usecase.generate_subscription_token(user_id, &channel)
     }
+
+    fn generate_lobbies_subscription_token(&self, user_id: Uuid) -> Result<String, AppError> {
+        self.token_usecase.generate_subscription_token(user_id, "lobbies")
+    }
 }

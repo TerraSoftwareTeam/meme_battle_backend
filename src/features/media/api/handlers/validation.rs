@@ -4,9 +4,10 @@ use crate::{
 };
 use axum::extract::Multipart;
 
-const MAX_UPLOAD_SIZE_BYTES: usize = 35 * 1024 * 1024;
-
-pub async fn extract_file(multipart: &mut Multipart) -> Result<UploadFile, AppError> {
+pub async fn extract_file(
+    multipart: &mut Multipart,
+    max_file_size_bytes: usize,
+) -> Result<UploadFile, AppError> {
     while let Some(field) = multipart
         .next_field()
         .await
@@ -34,10 +35,10 @@ pub async fn extract_file(multipart: &mut Multipart) -> Result<UploadFile, AppEr
             return Err(AppError::ValidationError("File cannot be empty".into()));
         }
 
-        if bytes.len() > MAX_UPLOAD_SIZE_BYTES {
+        if bytes.len() > max_file_size_bytes {
             return Err(AppError::ValidationError(format!(
                 "File cannot exceed {} bytes",
-                MAX_UPLOAD_SIZE_BYTES
+                max_file_size_bytes
             )));
         }
 

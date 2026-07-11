@@ -13,7 +13,7 @@ use crate::{
     features::game::{
         api::dto::{
             CreateGameRequest, UpdateGameRequest, ReadyRequest, SubmitCardRequest, VoteRequest, GameDto,
-            ActiveGameDto, GameStateDto, PlayerDto, RoundDto, CreateMemePackRequest, CreateMemePackResponse,
+            ActiveGameDto, ActiveGamesResponseDto, GameStateDto, PlayerDto, RoundDto, CreateMemePackRequest, CreateMemePackResponse,
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
@@ -56,15 +56,24 @@ pub async fn create_game(
 #[utoipa::path(
     get,
     path = "/games",
-    responses((status = 200, description = "List active lobby games", body = Vec<ActiveGameDto>)),
+    responses((status = 200, description = "List active lobby games with WS subscription tokens", body = ActiveGamesResponseDto)),
     tag = "Games"
 )]
 pub async fn list_active_games(
     State(state): State<GameState>,
+    current_user: CurrentUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let games = state.list_active_games.execute().await?;
-    let dtos: Vec<ActiveGameDto> = games.into_iter().map(ActiveGameDto::from).collect();
-    Ok(RestApiResponse::success(dtos))
+    let user_id = Uuid::parse_str(&current_user.user_id)
+        .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
+
+    let result = state.list_active_games.execute(user_id).await?;
+    let games_dtos: Vec<ActiveGameDto> = result.games.into_iter().map(ActiveGameDto::from).collect();
+
+    Ok(RestApiResponse::success(ActiveGamesResponseDto {
+        games: games_dtos,
+        connection_token: result.connection_token,
+        lobbies_subscription_token: result.lobbies_subscription_token,
+    }))
 }
 
 #[utoipa::path(

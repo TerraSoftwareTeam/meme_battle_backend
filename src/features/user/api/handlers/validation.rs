@@ -5,15 +5,16 @@ use crate::{
 use axum::extract::Multipart;
 use validator::Validate;
 
-const MAX_AVATAR_SIZE_BYTES: usize = 10 * 1024 * 1024;
-
 pub fn validate_update_me(payload: &UpdateMeDto) -> Result<(), AppError> {
     payload
         .validate()
         .map_err(|err| AppError::ValidationError(format!("Invalid input: {}", err)))
 }
 
-pub async fn extract_avatar_file(multipart: &mut Multipart) -> Result<AvatarUploadFile, AppError> {
+pub async fn extract_avatar_file(
+    multipart: &mut Multipart,
+    max_file_size_bytes: usize,
+) -> Result<AvatarUploadFile, AppError> {
     while let Some(field) = multipart
         .next_field()
         .await
@@ -41,10 +42,10 @@ pub async fn extract_avatar_file(multipart: &mut Multipart) -> Result<AvatarUplo
             return Err(AppError::ValidationError("File cannot be empty".into()));
         }
 
-        if bytes.len() > MAX_AVATAR_SIZE_BYTES {
+        if bytes.len() > max_file_size_bytes {
             return Err(AppError::ValidationError(format!(
                 "File cannot exceed {} bytes",
-                MAX_AVATAR_SIZE_BYTES
+                max_file_size_bytes
             )));
         }
 

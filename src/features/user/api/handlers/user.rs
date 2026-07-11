@@ -65,7 +65,7 @@ pub async fn update_my_avatar(
     current_user: CurrentUser,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
-    let file = extract_avatar_file(&mut multipart).await?;
+    let file = extract_avatar_file(&mut multipart, state.max_file_size_bytes).await?;
     let user = state
         .update_my_avatar
         .execute(current_user.user_id, file)

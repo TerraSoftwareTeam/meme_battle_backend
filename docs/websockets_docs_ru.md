@@ -26,6 +26,12 @@ sequenceDiagram
     
     Client->>WS: Подписка на personal:#{user_id} с personal_subscription_token
     WS-->>Client: Подтверждение подписки на личный канал (ack)
+
+    Note over Client, WS: Прослушивание списка лобби (Глобальный каталог)
+    Client->>API: GET /games (Bearer auth)
+    API-->>Client: Возвращает список лобби, connection_token и lobbies_subscription_token
+    Client->>WS: Подписка на lobbies с lobbies_subscription_token
+    WS-->>Client: Подтверждение подписки на канал лобби (ack)
 ```
 
 ---
@@ -34,21 +40,45 @@ sequenceDiagram
 
 Все WebSocket-подключения клиентов и подписки на каналы требуют токены авторизации.
 
-### Запрос
+### Получение токенов для конкретной игры
 * **Эндпоинт**: `GET /games/{game_id}/ws-token`
 * **Заголовки**: `Authorization: Bearer <access_token>`
-
-### Ответ (`200 OK`)
-```json
-{
-  "success": true,
-  "data": {
-    "connection_token": "eyJhbGciOi...",
-    "game_subscription_token": "eyJhbGciOi...",
-    "personal_subscription_token": "eyJhbGciOi..."
+* **Ответ (`200 OK`)**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "connection_token": "eyJhbGciOi...",
+      "game_subscription_token": "eyJhbGciOi...",
+      "personal_subscription_token": "eyJhbGciOi..."
+    }
   }
-}
-```
+  ```
+
+### Получение токенов для списка лобби (каталога игр)
+* **Эндпоинт**: `GET /games`
+* **Заголовки**: `Authorization: Bearer <access_token>`
+* **Ответ (`200 OK`)**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "games": [
+        {
+          "id": "d3b07384-d113-4956-a517-8828d18471a4",
+          "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+          "mode": "situation_to_meme",
+          "max_rounds": 3,
+          "hand_size": 5,
+          "players_count": 1,
+          "created_at": "2026-07-06T13:46:27.964Z"
+        }
+      ],
+      "connection_token": "eyJhbGciOi...",
+      "lobbies_subscription_token": "eyJhbGciOi..."
+    }
+  }
+  ```
 
 ---
 
@@ -71,7 +101,7 @@ sequenceDiagram
 ```
 
 ### Подписка на каналы
-Подпишитесь на **публичный канал игры** (game channel) и **личный канал игрока** (personal channel):
+Подпишитесь на необходимые каналы:
 
 1. **Канал игры** (`game:{game_id}`):
    ```json
@@ -92,6 +122,17 @@ sequenceDiagram
        "token": "<personal_subscription_token>"
      },
      "id": 3
+   }
+   ```
+
+3. **Канал обновления лобби** (`lobbies`):
+   ```json
+   {
+     "subscribe": {
+       "channel": "lobbies",
+       "token": "<lobbies_subscription_token>"
+     },
+     "id": 4
    }
    ```
 
@@ -269,6 +310,40 @@ sequenceDiagram
     { "user_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a", "score": 4 },
     { "user_id": "99bb18f7-8da6-4aa2-bf9e-f00ee5e2c34a", "score": 1 }
   ]
+}
+```
+
+### LobbyCreated (`lobby_created`)
+* **Канал**: `lobbies` (Публичный)
+* **Триггер**: Создано новое лобби.
+```json
+{
+  "id": "d3b07384-d113-4956-a517-8828d18471a4",
+  "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+  "mode": "situation_to_meme",
+  "max_rounds": 3,
+  "hand_size": 5,
+  "players_count": 1,
+  "created_at": "2026-07-06T13:46:27.964Z"
+}
+```
+
+### LobbyUpdated (`lobby_updated`)
+* **Канал**: `lobbies` (Публичный)
+* **Триггер**: Количество игроков в лобби изменилось.
+```json
+{
+  "id": "d3b07384-d113-4956-a517-8828d18471a4",
+  "players_count": 2
+}
+```
+
+### LobbyRemoved (`lobby_removed`)
+* **Канал**: `lobbies` (Публичный)
+* **Триггер**: Лобби закрылось или игра началась (игра удалена из каталога).
+```json
+{
+  "id": "d3b07384-d113-4956-a517-8828d18471a4"
 }
 ```
 

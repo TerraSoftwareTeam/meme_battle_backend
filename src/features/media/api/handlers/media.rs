@@ -4,7 +4,7 @@ use crate::{
         http::{current_user::CurrentUser, dto::RestApiResponse, error::AppError},
     },
     features::media::api::{
-        dto::response::MediaAssetDto,
+        dto::{request::UploadMediaRequestDto, response::MediaAssetDto},
         handlers::validation::extract_file,
     },
 };
@@ -16,7 +16,7 @@ use axum::{
 #[utoipa::path(
     post,
     path = "/media/upload/image",
-    request_body(content = crate::features::media::api::dto::request::UploadMediaRequestDto, content_type = "multipart/form-data"),
+    request_body(content = UploadMediaRequestDto, content_type = "multipart/form-data"),
     responses((status = 200, description = "Upload media for images/memes", body = MediaAssetDto)),
     tag = "Media"
 )]
@@ -34,7 +34,7 @@ async fn handle_media_upload(
     owner_user_id: String,
     mut multipart: Multipart,
 ) -> Result<MediaAssetDto, AppError> {
-    let file = extract_file(&mut multipart).await?;
+    let file = extract_file(&mut multipart, state.max_file_size_bytes).await?;
     let media = state.upload_media.execute(owner_user_id, file).await?;
     Ok(MediaAssetDto::from(media))
 }

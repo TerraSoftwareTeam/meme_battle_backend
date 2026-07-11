@@ -27,7 +27,7 @@ use meme_battle_backend::{
             CreateMemePackRequest, CreateMemePackResponse, CreateSituationPackRequest,
             CreateSituationPackResponse, GameDto, GameStateDto, MemePackDetailsResponse,
             ReadyRequest, SituationPackDetailsResponse, SubmitCardRequest, UpdateGameRequest,
-            UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest, ActiveGameDto,
+            UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest, ActiveGamesResponseDto,
         },
         ContentSafetyLevel, LanguageCode, GameCard, GameMode, RoundPhase,
     },
@@ -2013,8 +2013,11 @@ async fn test_game_catalog_endpoint() {
     // Query active games when there is none
     let (status_list1, bytes_list1) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
     assert_eq!(status_list1, StatusCode::OK);
-    let list_resp1: RestApiResponse<Vec<ActiveGameDto>> = serde_json::from_slice(&bytes_list1).unwrap();
-    assert_eq!(list_resp1.0.data.unwrap().len(), 0);
+    let list_resp1: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list1).unwrap();
+    let data1 = list_resp1.0.data.unwrap();
+    assert_eq!(data1.games.len(), 0);
+    assert!(!data1.connection_token.is_empty());
+    assert!(!data1.lobbies_subscription_token.is_empty());
 
     // Create Game 1
     let create_payload = CreateGameRequest {
@@ -2039,11 +2042,14 @@ async fn test_game_catalog_endpoint() {
     // Query active games: Game 1 should be present with player count = 1
     let (status_list2, bytes_list2) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
     assert_eq!(status_list2, StatusCode::OK);
-    let list_resp2: RestApiResponse<Vec<ActiveGameDto>> = serde_json::from_slice(&bytes_list2).unwrap();
-    let active_games = list_resp2.0.data.unwrap();
+    let list_resp2: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list2).unwrap();
+    let data2 = list_resp2.0.data.unwrap();
+    let active_games = data2.games;
     assert_eq!(active_games.len(), 1);
     assert_eq!(active_games[0].id, game1_id);
     assert_eq!(active_games[0].players_count, 1);
+    assert!(!data2.connection_token.is_empty());
+    assert!(!data2.lobbies_subscription_token.is_empty());
 
     // Player 2 joins Game 1
     let (status_join, _) = send_request::<Value>(
@@ -2070,8 +2076,9 @@ async fn test_game_catalog_endpoint() {
     // Query active games: Game 1 should be present with player count = 3
     let (status_list3, bytes_list3) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
     assert_eq!(status_list3, StatusCode::OK);
-    let list_resp3: RestApiResponse<Vec<ActiveGameDto>> = serde_json::from_slice(&bytes_list3).unwrap();
-    let active_games3 = list_resp3.0.data.unwrap();
+    let list_resp3: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list3).unwrap();
+    let data3 = list_resp3.0.data.unwrap();
+    let active_games3 = data3.games;
     assert_eq!(active_games3.len(), 1);
     assert_eq!(active_games3[0].players_count, 3);
 
@@ -2119,7 +2126,8 @@ async fn test_game_catalog_endpoint() {
     // Query active games: Game 1 should no longer be listed because status is 'playing'
     let (status_list4, bytes_list4) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
     assert_eq!(status_list4, StatusCode::OK);
-    let list_resp4: RestApiResponse<Vec<ActiveGameDto>> = serde_json::from_slice(&bytes_list4).unwrap();
-    assert_eq!(list_resp4.0.data.unwrap().len(), 0);
+    let list_resp4: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list4).unwrap();
+    let data4 = list_resp4.0.data.unwrap();
+    assert_eq!(data4.games.len(), 0);
 }
 

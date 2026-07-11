@@ -9,6 +9,14 @@
   "user_subscribe_to_personal": true,
   "user_personal_channel_namespace": "personal",
 
+  "presence": true,
+  "allow_subscribe_for_client": false,
+  "allow_publish_for_client": false,
+  "history_size": 100,
+  "history_ttl": "300s",
+  "force_recovery": true,
+  "force_positioning": true,
+
   "namespaces": [
     {
       "name": "personal",

@@ -105,4 +105,29 @@ pub trait GameNotificationSender: Send + Sync {
         final_scoreboard: Vec<(Uuid, i32)>,
         version: i64,
     ) -> Result<(), AppError>;
+
+    async fn notify_lobby_created(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        host_id: Uuid,
+        mode: String,
+        max_rounds: i32,
+        hand_size: i32,
+        players_count: i32,
+        created_at: DateTime<Utc>,
+    ) -> Result<(), AppError>;
+
+    async fn notify_lobby_updated(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        players_count: i32,
+    ) -> Result<(), AppError>;
+
+    async fn notify_lobby_removed(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<(), AppError>;
 }

@@ -1,7 +1,7 @@
 use axum::{
     body::{Body, Bytes},
     error_handling::HandleErrorLayer,
-    extract::Request,
+    extract::{Request, DefaultBodyLimit},
     http::{
         header::{AUTHORIZATION, CONTENT_TYPE},
         Method, StatusCode,
@@ -121,6 +121,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(api_routes)
         .fallback(fallback)
         .layer(middleware_stack)
+        .layer(DefaultBodyLimit::max(35 * 1024 * 1024))
         .with_state(state)
 }
 

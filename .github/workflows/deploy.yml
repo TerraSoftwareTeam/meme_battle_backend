@@ -115,6 +115,7 @@ jobs:
           GF_ADMIN_USER: ${{ vars.GF_ADMIN_USER || 'admin' }}
           GF_ADMIN_PASSWORD: ${{ secrets.GF_ADMIN_PASSWORD }}
           GRAFANA_EXTERNAL_PORT: ${{ vars.GRAFANA_EXTERNAL_PORT || '3000' }}
+          MAX_FILE_SIZE_MB: ${{ vars.MAX_FILE_SIZE_MB || '35' }}
         run: |
           # Verification of Required Secrets
           : "${POSTGRES_USER:?POSTGRES_USER secret is required}"
@@ -159,6 +160,7 @@ jobs:
           CENTRIFUGO_API_URL=${CENTRIFUGO_API_URL}
 
           RUST_LOG=${RUST_LOG}
+          MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB}
 
           OTEL_EXPORTER_OTLP_ENDPOINT=http://otelcol:4318
           OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf

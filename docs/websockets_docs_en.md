@@ -26,6 +26,12 @@ sequenceDiagram
     
     Client->>WS: Subscribe to personal:#{user_id} with personal_subscription_token
     WS-->>Client: Personal channel subscription acknowledgment (ack)
+
+    Note over Client, WS: Lobbies List Listening (Global Catalog)
+    Client->>API: GET /games (Bearer auth)
+    API-->>Client: Returns lobbies list, connection_token, and lobbies_subscription_token
+    Client->>WS: Subscribe to lobbies with lobbies_subscription_token
+    WS-->>Client: Lobbies channel subscription acknowledgment (ack)
 ```
 
 ---
@@ -34,21 +40,45 @@ sequenceDiagram
 
 All client WebSocket connections and channel subscriptions require authorization tokens.
 
-### Request
+### Retrieve Tokens for a Specific Game
 * **Endpoint**: `GET /games/{game_id}/ws-token`
 * **Headers**: `Authorization: Bearer <access_token>`
-
-### Response (`200 OK`)
-```json
-{
-  "success": true,
-  "data": {
-    "connection_token": "eyJhbGciOi...",
-    "game_subscription_token": "eyJhbGciOi...",
-    "personal_subscription_token": "eyJhbGciOi..."
+* **Response (`200 OK`)**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "connection_token": "eyJhbGciOi...",
+      "game_subscription_token": "eyJhbGciOi...",
+      "personal_subscription_token": "eyJhbGciOi..."
+    }
   }
-}
-```
+  ```
+
+### Retrieve Tokens for the Lobbies List (Games Catalog)
+* **Endpoint**: `GET /games`
+* **Headers**: `Authorization: Bearer <access_token>`
+* **Response (`200 OK`)**:
+  ```json
+  {
+    "success": true,
+    "data": {
+      "games": [
+        {
+          "id": "d3b07384-d113-4956-a517-8828d18471a4",
+          "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+          "mode": "situation_to_meme",
+          "max_rounds": 3,
+          "hand_size": 5,
+          "players_count": 1,
+          "created_at": "2026-07-06T13:46:27.964Z"
+        }
+      ],
+      "connection_token": "eyJhbGciOi...",
+      "lobbies_subscription_token": "eyJhbGciOi..."
+    }
+  }
+  ```
 
 ---
 
@@ -71,7 +101,7 @@ After opening the WebSocket connection, send the `connect` frame:
 ```
 
 ### Channel Subscription
-Subscribe to the **public game channel** and the **private player channel**:
+Subscribe to the necessary channels:
 
 1. **Game Channel** (`game:{game_id}`):
    ```json
@@ -92,6 +122,17 @@ Subscribe to the **public game channel** and the **private player channel**:
        "token": "<personal_subscription_token>"
      },
      "id": 3
+   }
+   ```
+
+3. **Lobbies Channel** (`lobbies`):
+   ```json
+   {
+     "subscribe": {
+       "channel": "lobbies",
+       "token": "<lobbies_subscription_token>"
+     },
+     "id": 4
    }
    ```
 
@@ -269,6 +310,40 @@ All event notifications sent by the server are wrapped in a Centrifugo `push` co
     { "user_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a", "score": 4 },
     { "user_id": "99bb18f7-8da6-4aa2-bf9e-f00ee5e2c34a", "score": 1 }
   ]
+}
+```
+
+### LobbyCreated (`lobby_created`)
+* **Channel**: `lobbies` (Public)
+* **Trigger**: A new lobby has been created.
+```json
+{
+  "id": "d3b07384-d113-4956-a517-8828d18471a4",
+  "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+  "mode": "situation_to_meme",
+  "max_rounds": 3,
+  "hand_size": 5,
+  "players_count": 1,
+  "created_at": "2026-07-06T13:46:27.964Z"
+}
+```
+
+### LobbyUpdated (`lobby_updated`)
+* **Channel**: `lobbies` (Public)
+* **Trigger**: A player joined/left and player count changed.
+```json
+{
+  "id": "d3b07384-d113-4956-a517-8828d18471a4",
+  "players_count": 2
+}
+```
+
+### LobbyRemoved (`lobby_removed`)
+* **Channel**: `lobbies` (Public)
+* **Trigger**: The lobby was closed or the game session started (and therefore removed from the active lobbies catalog).
+```json
+{
+  "id": "d3b07384-d113-4956-a517-8828d18471a4"
 }
 ```
 

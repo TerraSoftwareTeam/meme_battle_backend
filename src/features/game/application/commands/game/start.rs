@@ -226,6 +226,10 @@ impl StartGameCommand {
             .notify_game_started(&mut tx, game_id, game.max_rounds, game.hand_size, new_version)
             .await?;
 
+        self.notification_sender
+            .notify_lobby_removed(&mut tx, game_id)
+            .await?;
+
         let prompt_kind = match game.mode {
             GameMode::SituationToMeme => "situation".to_string(),
             GameMode::MemeToSituation => "meme".to_string(),

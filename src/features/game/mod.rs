@@ -26,7 +26,7 @@ pub use application::queries::{
         GetSituationPackQuery, ListSituationPacksQuery, ListUserSituationPacksQuery,
         SituationPackQueryResult,
     },
-    list_active_games::ListActiveGamesQuery,
+    list_active_games::{ListActiveGamesQuery, ListActiveGamesResult},
 };
 
 // Re-export domain models & repo port

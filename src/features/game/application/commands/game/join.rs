@@ -68,6 +68,10 @@ impl JoinGameCommand {
             .notify_player_joined(&mut tx, game_id, user_id, players_count, new_version)
             .await?;
 
+        self.notification_sender
+            .notify_lobby_updated(&mut tx, game_id, players_count)
+            .await?;
+
         tx.commit().await?;
         Ok(())
     }

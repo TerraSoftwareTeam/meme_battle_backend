@@ -14,6 +14,7 @@ pub struct UserState {
     pub get_user_list: Arc<GetUserListQuery>,
     pub get_users: Arc<GetUsersQuery>,
     pub promote_to_admin: Arc<PromoteToAdminCommand>,
+    pub max_file_size_bytes: usize,
 }
 
 impl UserState {
@@ -25,6 +26,7 @@ impl UserState {
         get_user_list: Arc<GetUserListQuery>,
         get_users: Arc<GetUsersQuery>,
         promote_to_admin: Arc<PromoteToAdminCommand>,
+        max_file_size_bytes: usize,
     ) -> Self {
         Self {
             update_me,
@@ -34,6 +36,7 @@ impl UserState {
             get_user_list,
             get_users,
             promote_to_admin,
+            max_file_size_bytes,
         }
     }
 }

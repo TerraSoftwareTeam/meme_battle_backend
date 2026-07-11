@@ -116,12 +116,15 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     ));
     let promote_to_admin = Arc::new(PromoteToAdminCommand::new(user_repository));
 
+    let max_file_size_bytes = config.max_file_size_mb as usize * 1024 * 1024;
+
     // States
     let auth_state = AuthState::new(register_user, login_user, auth_as_guest, refresh_session);
     let media_state = MediaState::new(
         upload_media,
         get_media_asset_url.clone(),
         mark_media_attached.clone(),
+        max_file_size_bytes,
     );
     let user_state = UserState::new(
         update_me,
@@ -131,6 +134,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         get_user_list,
         get_users,
         promote_to_admin,
+        max_file_size_bytes,
     );
 
     // Realtime Feature Bootstrapping
@@ -163,7 +167,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         media_repository.clone(),
     ));
 
-    let create_game = Arc::new(crate::features::game::CreateGameCommand::new(game_repository.clone()));
+    let create_game = Arc::new(crate::features::game::CreateGameCommand::new(game_repository.clone(), notification_sender.clone()));
     let join_game = Arc::new(crate::features::game::JoinGameCommand::new(game_repository.clone(), notification_sender.clone()));
     let set_ready = Arc::new(crate::features::game::SetReadyCommand::new(game_repository.clone(), notification_sender.clone()));
     let start_game = Arc::new(crate::features::game::StartGameCommand::new(game_repository.clone(), notification_sender.clone()));
@@ -196,8 +200,8 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let list_situation_packs = Arc::new(crate::features::game::ListSituationPacksQuery::new(game_repository.clone()));
     let list_user_situation_packs = Arc::new(crate::features::game::ListUserSituationPacksQuery::new(game_repository.clone()));
     let get_situation_pack = Arc::new(crate::features::game::GetSituationPackQuery::new(game_repository.clone()));
-    let get_ws_token = Arc::new(crate::features::game::GetWsTokenQuery::new(game_repository.clone(), token_generator));
-    let list_active_games = Arc::new(crate::features::game::ListActiveGamesQuery::new(game_repository.clone()));
+    let get_ws_token = Arc::new(crate::features::game::GetWsTokenQuery::new(game_repository.clone(), token_generator.clone()));
+    let list_active_games = Arc::new(crate::features::game::ListActiveGamesQuery::new(game_repository.clone(), token_generator));
 
     let process_timeout = Arc::new(crate::features::game::ProcessTimeoutCommand::new(
         game_repository.clone(),

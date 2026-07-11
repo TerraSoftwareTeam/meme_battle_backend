@@ -17,7 +17,7 @@ use crate::{
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
-            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, ActiveGameDto,
+            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, ActiveGameDto, ActiveGamesResponseDto,
         },
         domain::model::{GameCard, GameMode, GameStatus, RoundPhase},
     },
@@ -103,6 +103,7 @@ pub fn game_routes() -> Router<AppState> {
         SituationPackDetailsResponse,
         WsTokenDto,
         ActiveGameDto,
+        ActiveGamesResponseDto,
         GameMode,
         GameStatus,
         RoundPhase
