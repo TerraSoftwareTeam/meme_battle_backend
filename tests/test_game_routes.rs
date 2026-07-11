@@ -28,6 +28,7 @@ use meme_battle_backend::{
             CreateSituationPackResponse, GameDto, GameStateDto, MemePackDetailsResponse,
             ReadyRequest, SituationPackDetailsResponse, SubmitCardRequest, UpdateGameRequest,
             UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest, ActiveGamesResponseDto,
+            LobbiesWsTokenDto,
         },
         ContentSafetyLevel, LanguageCode, GameCard, GameMode, RoundPhase,
     },
@@ -2016,8 +2017,14 @@ async fn test_game_catalog_endpoint() {
     let list_resp1: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list1).unwrap();
     let data1 = list_resp1.0.data.unwrap();
     assert_eq!(data1.games.len(), 0);
-    assert!(!data1.connection_token.is_empty());
-    assert!(!data1.lobbies_subscription_token.is_empty());
+
+    // Verify ws-token endpoint returns tokens
+    let (status_ws_token, bytes_ws_token) = send_request::<()>(&app, Method::GET, "/games/catalog/ws-token", Some(&token1), None).await;
+    assert_eq!(status_ws_token, StatusCode::OK);
+    let ws_token_resp: RestApiResponse<LobbiesWsTokenDto> = serde_json::from_slice(&bytes_ws_token).unwrap();
+    let ws_token_data = ws_token_resp.0.data.unwrap();
+    assert!(!ws_token_data.connection_token.is_empty());
+    assert!(!ws_token_data.lobbies_subscription_token.is_empty());
 
     // Create Game 1
     let create_payload = CreateGameRequest {
@@ -2048,8 +2055,6 @@ async fn test_game_catalog_endpoint() {
     assert_eq!(active_games.len(), 1);
     assert_eq!(active_games[0].id, game1_id);
     assert_eq!(active_games[0].players_count, 1);
-    assert!(!data2.connection_token.is_empty());
-    assert!(!data2.lobbies_subscription_token.is_empty());
 
     // Player 2 joins Game 1
     let (status_join, _) = send_request::<Value>(

@@ -14,7 +14,7 @@ sequenceDiagram
     participant API as Бэкенд REST API
     participant WS as Centrifugo WebSocket
     
-    Client->>API: GET /games/{id}/ws-token (Bearer auth)
+    Client->>API: GET /games/events/{id}/ws-token (Bearer auth)
     API-->>Client: Возвращает токены подключения и подписки
     
     Client->>WS: Подключение к wss://realtime.meme.skyfly.hackclub.app/connection/websocket
@@ -28,8 +28,8 @@ sequenceDiagram
     WS-->>Client: Подтверждение подписки на личный канал (ack)
 
     Note over Client, WS: Прослушивание списка лобби (Глобальный каталог)
-    Client->>API: GET /games (Bearer auth)
-    API-->>Client: Возвращает список лобби, connection_token и lobbies_subscription_token
+    Client->>API: GET /games/catalog/ws-token (Bearer auth)
+    API-->>Client: Возвращает connection_token и lobbies_subscription_token
     Client->>WS: Подписка на lobbies с lobbies_subscription_token
     WS-->>Client: Подтверждение подписки на канал лобби (ack)
 ```
@@ -41,7 +41,7 @@ sequenceDiagram
 Все WebSocket-подключения клиентов и подписки на каналы требуют токены авторизации.
 
 ### Получение токенов для конкретной игры
-* **Эндпоинт**: `GET /games/{game_id}/ws-token`
+* **Эндпоинт**: `GET /games/events/{game_id}/ws-token`
 * **Заголовки**: `Authorization: Bearer <access_token>`
 * **Ответ (`200 OK`)**:
   ```json
@@ -56,29 +56,38 @@ sequenceDiagram
   ```
 
 ### Получение токенов для списка лобби (каталога игр)
-* **Эндпоинт**: `GET /games`
+* **Эндпоинт**: `GET /games/catalog/ws-token`
 * **Заголовки**: `Authorization: Bearer <access_token>`
 * **Ответ (`200 OK`)**:
   ```json
   {
     "success": true,
     "data": {
-      "games": [
-        {
-          "id": "d3b07384-d113-4956-a517-8828d18471a4",
-          "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
-          "mode": "situation_to_meme",
-          "max_rounds": 3,
-          "hand_size": 5,
-          "players_count": 1,
-          "created_at": "2026-07-06T13:46:27.964Z"
-        }
-      ],
       "connection_token": "eyJhbGciOi...",
       "lobbies_subscription_token": "eyJhbGciOi..."
     }
   }
   ```
+
+> **Примечание**: `GET /games` теперь возвращает только список активных лобби (без токенов):
+> ```json
+> {
+>   "success": true,
+>   "data": {
+>     "games": [
+>       {
+>         "id": "d3b07384-d113-4956-a517-8828d18471a4",
+>         "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+>         "mode": "situation_to_meme",
+>         "max_rounds": 3,
+>         "hand_size": 5,
+>         "players_count": 1,
+>         "created_at": "2026-07-06T13:46:27.964Z"
+>       }
+>     ]
+>   }
+> }
+> ```
 
 ---
 

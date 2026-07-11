@@ -394,7 +394,7 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
 
     // WS tokens for Player 1
     let token_resp1 = client
-        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .get(format!("{}/games/events/{}/ws-token", base_url, game_id))
         .bearer_auth(&tokens[0])
         .send()
         .await
@@ -418,7 +418,7 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
 
     // WS tokens for Player 2
     let token_resp2 = client
-        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .get(format!("{}/games/events/{}/ws-token", base_url, game_id))
         .bearer_auth(&tokens[1])
         .send()
         .await

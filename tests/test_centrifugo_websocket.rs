@@ -126,7 +126,7 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
 
     // 8. Retrieve WebSocket tokens for Player 1
     let token_resp = client
-        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .get(format!("{}/games/events/{}/ws-token", base_url, game_id))
         .bearer_auth(&tokens[0])
         .send()
         .await
@@ -331,7 +331,7 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
 
     // Test Case A: Get WS token without auth header -> should fail with 401 Unauthorized
     let resp_no_auth = client
-        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .get(format!("{}/games/events/{}/ws-token", base_url, game_id))
         .send()
         .await
         .unwrap();
@@ -339,7 +339,7 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
 
     // Test Case B: Get WS token with invalid token -> should fail with 401 Unauthorized
     let resp_bad_token = client
-        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .get(format!("{}/games/events/{}/ws-token", base_url, game_id))
         .bearer_auth("invalid-token-string")
         .send()
         .await
@@ -349,7 +349,7 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
     // Test Case C: Get WS token for non-existent game -> should fail with 404 Not Found
     let random_game_id = Uuid::new_v4();
     let resp_not_found = client
-        .get(format!("{}/games/{}/ws-token", base_url, random_game_id))
+        .get(format!("{}/games/events/{}/ws-token", base_url, random_game_id))
         .bearer_auth(&token1)
         .send()
         .await
@@ -358,7 +358,7 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
 
     // Test Case D: Get WS token for game Player 2 is not joined to -> should fail with 403 Forbidden
     let resp_forbidden = client
-        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .get(format!("{}/games/events/{}/ws-token", base_url, game_id))
         .bearer_auth(&token2)
         .send()
         .await
@@ -376,7 +376,7 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
 
     // Test Case E: Get WS token for game Player 2 is now joined to -> should succeed
     let resp_success = client
-        .get(format!("{}/games/{}/ws-token", base_url, game_id))
+        .get(format!("{}/games/events/{}/ws-token", base_url, game_id))
         .bearer_auth(&token2)
         .send()
         .await
@@ -582,23 +582,23 @@ async fn test_lobbies_realtime_websocket_updates() {
     .unwrap();
 
     // 7. Player 1 fetches catalog first to obtain connection and lobbies subscription tokens
-    let get_games_resp = client
-        .get(format!("{}/games", base_url))
+    let get_ws_token_resp = client
+        .get(format!("{}/games/catalog/ws-token", base_url))
         .bearer_auth(&token1)
         .send()
         .await
         .unwrap();
-    assert_eq!(get_games_resp.status(), StatusCode::OK);
-    let games_body: RestApiResponse<Value> = get_games_resp.json().await.unwrap();
-    let games_data = games_body.0.data.unwrap();
+    assert_eq!(get_ws_token_resp.status(), StatusCode::OK);
+    let ws_token_body: RestApiResponse<Value> = get_ws_token_resp.json().await.unwrap();
+    let ws_token_data = ws_token_body.0.data.unwrap();
 
-    let connection_token = games_data
+    let connection_token = ws_token_data
         .get("connection_token")
         .unwrap()
         .as_str()
         .unwrap()
         .to_string();
-    let lobbies_subscription_token = games_data
+    let lobbies_subscription_token = ws_token_data
         .get("lobbies_subscription_token")
         .unwrap()
         .as_str()

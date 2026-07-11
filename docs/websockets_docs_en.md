@@ -14,7 +14,7 @@ sequenceDiagram
     participant API as Backend REST API
     participant WS as Centrifugo WebSocket
     
-    Client->>API: GET /games/{id}/ws-token (Bearer auth)
+    Client->>API: GET /games/events/{id}/ws-token (Bearer auth)
     API-->>Client: Returns connection and subscription tokens
     
     Client->>WS: Connect to wss://realtime.meme.skyfly.hackclub.app/connection/websocket
@@ -28,8 +28,8 @@ sequenceDiagram
     WS-->>Client: Personal channel subscription acknowledgment (ack)
 
     Note over Client, WS: Lobbies List Listening (Global Catalog)
-    Client->>API: GET /games (Bearer auth)
-    API-->>Client: Returns lobbies list, connection_token, and lobbies_subscription_token
+    Client->>API: GET /games/catalog/ws-token (Bearer auth)
+    API-->>Client: Returns connection_token and lobbies_subscription_token
     Client->>WS: Subscribe to lobbies with lobbies_subscription_token
     WS-->>Client: Lobbies channel subscription acknowledgment (ack)
 ```
@@ -41,7 +41,7 @@ sequenceDiagram
 All client WebSocket connections and channel subscriptions require authorization tokens.
 
 ### Retrieve Tokens for a Specific Game
-* **Endpoint**: `GET /games/{game_id}/ws-token`
+* **Endpoint**: `GET /games/events/{game_id}/ws-token`
 * **Headers**: `Authorization: Bearer <access_token>`
 * **Response (`200 OK`)**:
   ```json
@@ -56,29 +56,38 @@ All client WebSocket connections and channel subscriptions require authorization
   ```
 
 ### Retrieve Tokens for the Lobbies List (Games Catalog)
-* **Endpoint**: `GET /games`
+* **Endpoint**: `GET /games/catalog/ws-token`
 * **Headers**: `Authorization: Bearer <access_token>`
 * **Response (`200 OK`)**:
   ```json
   {
     "success": true,
     "data": {
-      "games": [
-        {
-          "id": "d3b07384-d113-4956-a517-8828d18471a4",
-          "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
-          "mode": "situation_to_meme",
-          "max_rounds": 3,
-          "hand_size": 5,
-          "players_count": 1,
-          "created_at": "2026-07-06T13:46:27.964Z"
-        }
-      ],
       "connection_token": "eyJhbGciOi...",
       "lobbies_subscription_token": "eyJhbGciOi..."
     }
   }
   ```
+
+> **Note**: `GET /games` only returns the list of active lobby games (no tokens):
+> ```json
+> {
+>   "success": true,
+>   "data": {
+>     "games": [
+>       {
+>         "id": "d3b07384-d113-4956-a517-8828d18471a4",
+>         "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+>         "mode": "situation_to_meme",
+>         "max_rounds": 3,
+>         "hand_size": 5,
+>         "players_count": 1,
+>         "created_at": "2026-07-06T13:46:27.964Z"
+>       }
+>     ]
+>   }
+> }
+> ```
 
 ---
 

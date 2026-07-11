@@ -82,6 +82,7 @@ pub struct GameState {
     pub process_timeout: Arc<ProcessTimeoutCommand>,
     pub timer_worker: Arc<GameTimerWorker>,
     pub media_manager: Arc<dyn GameMediaManager>,
+    pub token_generator: Arc<dyn GameTokenGenerator>,
 }
 
 impl GameState {
@@ -115,6 +116,7 @@ impl GameState {
         process_timeout: Arc<ProcessTimeoutCommand>,
         timer_worker: Arc<GameTimerWorker>,
         media_manager: Arc<dyn GameMediaManager>,
+        token_generator: Arc<dyn GameTokenGenerator>,
     ) -> Self {
         Self {
             create_game,
@@ -146,6 +148,7 @@ impl GameState {
             process_timeout,
             timer_worker,
             media_manager,
+            token_generator,
         }
     }
 }

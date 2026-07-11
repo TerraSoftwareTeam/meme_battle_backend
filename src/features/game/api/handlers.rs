@@ -17,7 +17,7 @@ use crate::{
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
-            PackSituationDto, SituationPackDetailsResponse, WsTokenDto,
+            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, LobbiesWsTokenDto,
         },
         GameState,
     },
@@ -56,23 +56,39 @@ pub async fn create_game(
 #[utoipa::path(
     get,
     path = "/games",
-    responses((status = 200, description = "List active lobby games with WS subscription tokens", body = ActiveGamesResponseDto)),
+    responses((status = 200, description = "List active lobby games", body = ActiveGamesResponseDto)),
     tag = "Games"
 )]
 pub async fn list_active_games(
+    State(state): State<GameState>,
+) -> Result<impl IntoResponse, AppError> {
+    let result = state.list_active_games.execute().await?;
+    let games_dtos: Vec<ActiveGameDto> = result.games.into_iter().map(ActiveGameDto::from).collect();
+
+    Ok(RestApiResponse::success(ActiveGamesResponseDto {
+        games: games_dtos,
+    }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/games/catalog/ws-token",
+    responses((status = 200, description = "Get Centrifugo WebSocket connection and subscription tokens for active lobbies", body = LobbiesWsTokenDto)),
+    tag = "Games"
+)]
+pub async fn get_lobbies_ws_token(
     State(state): State<GameState>,
     current_user: CurrentUser,
 ) -> Result<impl IntoResponse, AppError> {
     let user_id = Uuid::parse_str(&current_user.user_id)
         .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
 
-    let result = state.list_active_games.execute(user_id).await?;
-    let games_dtos: Vec<ActiveGameDto> = result.games.into_iter().map(ActiveGameDto::from).collect();
+    let connection_token = state.token_generator.generate_connection_token(user_id)?;
+    let lobbies_subscription_token = state.token_generator.generate_lobbies_subscription_token(user_id)?;
 
-    Ok(RestApiResponse::success(ActiveGamesResponseDto {
-        games: games_dtos,
-        connection_token: result.connection_token,
-        lobbies_subscription_token: result.lobbies_subscription_token,
+    Ok(RestApiResponse::success(LobbiesWsTokenDto {
+        connection_token,
+        lobbies_subscription_token,
     }))
 }
 
@@ -148,7 +164,7 @@ pub async fn get_game_state(
 
 #[utoipa::path(
     get,
-    path = "/games/{id}/ws-token",
+    path = "/games/events/{id}/ws-token",
     responses((status = 200, description = "Get Centrifugo WebSocket connection and subscription tokens", body = WsTokenDto)),
     tag = "Games"
 )]

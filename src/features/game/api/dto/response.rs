@@ -53,6 +53,10 @@ impl From<ActiveGame> for ActiveGameDto {
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct ActiveGamesResponseDto {
     pub games: Vec<ActiveGameDto>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
+pub struct LobbiesWsTokenDto {
     pub connection_token: String,
     pub lobbies_subscription_token: String,
 }

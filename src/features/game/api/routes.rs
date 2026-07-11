@@ -17,7 +17,7 @@ use crate::{
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
-            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, ActiveGameDto, ActiveGamesResponseDto,
+            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, ActiveGameDto, ActiveGamesResponseDto, LobbiesWsTokenDto,
         },
         domain::model::{GameCard, GameMode, GameStatus, RoundPhase},
     },
@@ -26,6 +26,7 @@ use crate::{
 pub fn game_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handlers::create_game).get(handlers::list_active_games))
+        .route("/catalog/ws-token", get(handlers::get_lobbies_ws_token))
         .route("/{id}", patch(handlers::update_game))
         .route("/packs/memes", post(handlers::create_meme_pack).get(handlers::list_meme_packs))
         .route("/packs/memes/me", get(handlers::list_user_meme_packs))
@@ -38,7 +39,7 @@ pub fn game_routes() -> Router<AppState> {
         .route("/packs/situations/{id}/situations", post(handlers::add_situations_to_pack))
         .route("/packs/situations/{id}/situations/{situation_id}", delete(handlers::delete_pack_situation))
         .route("/{id}/state", get(handlers::get_game_state))
-        .route("/{id}/ws-token", get(handlers::get_ws_token))
+        .route("/events/{id}/ws-token", get(handlers::get_ws_token))
         .route("/{id}/join", post(handlers::join_game))
         .route("/{id}/ready", post(handlers::set_ready))
         .route("/{id}/start", post(handlers::start_game_session))
@@ -51,6 +52,7 @@ pub fn game_routes() -> Router<AppState> {
     paths(
         handlers::create_game,
         handlers::list_active_games,
+        handlers::get_lobbies_ws_token,
         handlers::update_game,
         handlers::get_game_state,
         handlers::get_ws_token,
@@ -104,6 +106,7 @@ pub fn game_routes() -> Router<AppState> {
         WsTokenDto,
         ActiveGameDto,
         ActiveGamesResponseDto,
+        LobbiesWsTokenDto,
         GameMode,
         GameStatus,
         RoundPhase

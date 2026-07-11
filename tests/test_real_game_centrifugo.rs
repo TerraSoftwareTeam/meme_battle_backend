@@ -544,7 +544,7 @@ async fn test_real_game_centrifugo_gameplay_flow() {
 
     for (idx, (token, user_id)) in tokens.iter().zip(user_ids.iter()).enumerate() {
         let token_resp = client
-            .get(format!("{}/games/{}/ws-token", base_url, game_id))
+            .get(format!("{}/games/events/{}/ws-token", base_url, game_id))
             .bearer_auth(token)
             .send()
             .await
