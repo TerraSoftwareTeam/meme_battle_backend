@@ -28,12 +28,7 @@ use crate::{
         http::error::{handle_error, AppError},
         security::jwt,
     },
-    features::{
-        auth::user_auth_routes,
-        media::media_routes,
-        user::user_routes,
-        game::game_routes,
-    },
+    features::{auth::user_auth_routes, game::game_routes, media::media_routes, user::user_routes},
 };
 
 use once_cell::sync::Lazy;
@@ -73,9 +68,8 @@ pub fn create_router(state: AppState) -> Router {
         // attach inspecter
         .layer(middleware::from_fn(make_request_response_inspecter(true)));
 
-    // Create the main router
-    Router::new()
-        .route("/health", axum::routing::get(health_check))
+    // Create the API routes router that we want to trace and assign request IDs to
+    let api_routes = Router::new()
         .merge(auth_router)
         .merge(protected_routes)
         .merge(create_swagger_ui())
@@ -84,11 +78,13 @@ pub fn create_router(state: AppState) -> Router {
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|req: &axum::http::Request<_>| {
-                    let user_agent = req.headers()
+                    let user_agent = req
+                        .headers()
                         .get(axum::http::header::USER_AGENT)
                         .and_then(|h| h.to_str().ok())
                         .unwrap_or("");
-                    let client_ip = req.headers()
+                    let client_ip = req
+                        .headers()
                         .get("x-forwarded-for")
                         .and_then(|h| h.to_str().ok())
                         .and_then(|s| s.split(',').next())
@@ -115,9 +111,14 @@ pub fn create_router(state: AppState) -> Router {
                         if status_code >= 400 {
                             span.record("error", true);
                         }
-                     },
+                    },
                 ),
-        )
+        );
+
+    // Create the main router
+    Router::new()
+        .route("/health", axum::routing::get(health_check))
+        .merge(api_routes)
         .fallback(fallback)
         .layer(middleware_stack)
         .with_state(state)
@@ -129,7 +130,7 @@ async fn health_check() -> &'static str {
 
 /// Fallback handler for unmatched routes
 pub async fn fallback() -> Result<impl IntoResponse, AppError> {
-    Ok((StatusCode::NOT_FOUND, "Not Found"))
+    Ok((StatusCode::NOT_FOUND, "Not Found ;("))
 }
 
 type InspectorFuture = std::pin::Pin<
@@ -233,12 +234,14 @@ async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
     // Extract request info for logging later
     let method = req.method().clone();
     let uri = req.uri().path().to_string();
-    let user_agent = req.headers()
+    let user_agent = req
+        .headers()
         .get(axum::http::header::USER_AGENT)
         .and_then(|h| h.to_str().ok())
         .unwrap_or("")
         .to_string();
-    let client_ip = req.headers()
+    let client_ip = req
+        .headers()
         .get("x-forwarded-for")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.split(',').next())
@@ -247,18 +250,20 @@ async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
         .to_string();
 
     // Bind the generated UUID to the task-local variable
-    let (mut res, final_request_id) = crate::common::http::dto::REQUEST_ID.scope(generated_uuid.clone(), async move {
-        // Proceed with the request handler chain
-        let res = next.run(req).await;
+    let (mut res, final_request_id) = crate::common::http::dto::REQUEST_ID
+        .scope(generated_uuid.clone(), async move {
+            // Proceed with the request handler chain
+            let res = next.run(req).await;
 
-        // Grab the final request ID (either the OTel trace ID or the fallback UUID)
-        let final_request_id = crate::common::http::dto::get_current_request_id();
+            // Grab the final request ID (either the OTel trace ID or the fallback UUID)
+            let final_request_id = crate::common::http::dto::get_current_request_id();
 
-        // Record it on the active tracing span
-        tracing::Span::current().record("request_id", &final_request_id);
+            // Record it on the active tracing span
+            tracing::Span::current().record("request_id", &final_request_id);
 
-        (res, final_request_id)
-    }).await;
+            (res, final_request_id)
+        })
+        .await;
 
     let latency = start_time.elapsed();
     let status_code = res.status().as_u16();
@@ -282,10 +287,8 @@ async fn request_id_middleware(req: Request<Body>, next: Next) -> Response {
 
     // Inject the request ID into the response headers
     if let Ok(hdr_val) = axum::http::HeaderValue::from_str(&final_request_id) {
-        res.headers_mut().insert(
-            axum::http::HeaderName::from_static("x-request-id"),
-            hdr_val,
-        );
+        res.headers_mut()
+            .insert(axum::http::HeaderName::from_static("x-request-id"), hdr_val);
     }
 
     res

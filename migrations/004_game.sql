@@ -3,6 +3,7 @@ CREATE TYPE content_safety_level AS ENUM ('family_friendly', 'spicy', 'explicit'
 CREATE TYPE game_status AS ENUM ('lobby', 'playing', 'finished');
 CREATE TYPE round_phase AS ENUM ('waiting', 'submitting', 'voting', 'finished');
 CREATE TYPE game_mode AS ENUM ('situation_to_meme', 'meme_to_situation');
+CREATE TYPE language_code AS ENUM ('ru', 'en', 'und');
 
 -- 2. PACKS (SITUATIONS AND MEMES)
 CREATE TABLE situation_packs (
@@ -10,7 +11,7 @@ CREATE TABLE situation_packs (
     author_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
-    language_code TEXT NOT NULL,
+    language_code language_code NOT NULL,
     safety_level content_safety_level NOT NULL DEFAULT 'family_friendly',
     is_public BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -28,7 +29,7 @@ CREATE TABLE meme_packs (
     author_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
-    language_code TEXT NOT NULL,
+    language_code language_code NOT NULL,
     safety_level content_safety_level NOT NULL DEFAULT 'family_friendly',
     is_public BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()

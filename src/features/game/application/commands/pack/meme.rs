@@ -4,9 +4,12 @@ use uuid::Uuid;
 use crate::{
     common::http::error::AppError,
     features::{
-        game::domain::{
-            model::ContentSafetyLevel,
-            ports::GameRepository,
+        game::{
+            domain::{
+                model::{ContentSafetyLevel, LanguageCode},
+                ports::GameRepository,
+            },
+            application::ports::game_media_manager::GameMediaManager,
         },
         media::MarkMediaAttachedCommand,
     },
@@ -15,16 +18,19 @@ use crate::{
 pub struct CreateMemePackCommand {
     repo: Arc<dyn GameRepository>,
     mark_media_attached: Arc<MarkMediaAttachedCommand>,
+    media_manager: Arc<dyn GameMediaManager>,
 }
 
 impl CreateMemePackCommand {
     pub fn new(
         repo: Arc<dyn GameRepository>,
         mark_media_attached: Arc<MarkMediaAttachedCommand>,
+        media_manager: Arc<dyn GameMediaManager>,
     ) -> Self {
         Self {
             repo,
             mark_media_attached,
+            media_manager,
         }
     }
 
@@ -33,13 +39,13 @@ impl CreateMemePackCommand {
         author_id: Uuid,
         name: String,
         description: Option<String>,
-        language_code: String,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
         media_ids: Vec<i64>,
     ) -> Result<Uuid, AppError> {
         // Validate that all provided media assets exist before writing anything
-        self.repo.validate_media_exists(&media_ids).await?;
+        self.media_manager.validate_media_exists(&media_ids).await?;
 
         let mut tx = self.repo.begin().await?;
 
@@ -50,7 +56,7 @@ impl CreateMemePackCommand {
                 author_id,
                 &name,
                 description.as_deref(),
-                &language_code,
+                language_code,
                 safety_level,
                 is_public,
             )
@@ -87,7 +93,7 @@ impl UpdateMemePackCommand {
         pack_id: Uuid,
         name: String,
         description: Option<String>,
-        language_code: String,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<(), AppError> {
@@ -105,7 +111,7 @@ impl UpdateMemePackCommand {
                 pack_id,
                 &name,
                 description.as_deref(),
-                &language_code,
+                language_code,
                 safety_level,
                 is_public,
             )
@@ -148,16 +154,19 @@ impl DeleteMemePackCommand {
 pub struct AddMemesToPackCommand {
     repo: Arc<dyn GameRepository>,
     mark_media_attached: Arc<MarkMediaAttachedCommand>,
+    media_manager: Arc<dyn GameMediaManager>,
 }
 
 impl AddMemesToPackCommand {
     pub fn new(
         repo: Arc<dyn GameRepository>,
         mark_media_attached: Arc<MarkMediaAttachedCommand>,
+        media_manager: Arc<dyn GameMediaManager>,
     ) -> Self {
         Self {
             repo,
             mark_media_attached,
+            media_manager,
         }
     }
 
@@ -175,7 +184,7 @@ impl AddMemesToPackCommand {
         }
 
         // Validate that all provided media assets exist before writing anything
-        self.repo.validate_media_exists(&media_ids).await?;
+        self.media_manager.validate_media_exists(&media_ids).await?;
 
         let mut tx = self.repo.begin().await?;
         for media_id in &media_ids {

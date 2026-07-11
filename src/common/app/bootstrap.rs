@@ -158,6 +158,11 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     // Game
     let game_repository: Arc<dyn crate::features::game::GameRepository> =
         Arc::new(crate::features::game::GameRepositoryImpl::new(pool.clone()));
+    let game_media_manager = Arc::new(crate::common::app::adapters::game_media_manager_adapter::GameMediaManagerAdapter::new(
+        get_media_asset_url.clone(),
+        media_repository.clone(),
+    ));
+
     let create_game = Arc::new(crate::features::game::CreateGameCommand::new(game_repository.clone()));
     let join_game = Arc::new(crate::features::game::JoinGameCommand::new(game_repository.clone(), notification_sender.clone()));
     let set_ready = Arc::new(crate::features::game::SetReadyCommand::new(game_repository.clone(), notification_sender.clone()));
@@ -165,16 +170,18 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let update_game = Arc::new(crate::features::game::UpdateGameCommand::new(game_repository.clone()));
     let submit_card = Arc::new(crate::features::game::SubmitCardCommand::new(game_repository.clone(), notification_sender.clone()));
     let vote_card = Arc::new(crate::features::game::VoteCardCommand::new(game_repository.clone(), notification_sender.clone()));
-    let get_game_state = Arc::new(crate::features::game::GetGameStateQuery::new(game_repository.clone()));
+    let get_game_state = Arc::new(crate::features::game::GetGameStateQuery::new(game_repository.clone(), game_media_manager.clone()));
     let create_meme_pack = Arc::new(crate::features::game::CreateMemePackCommand::new(
         game_repository.clone(),
         mark_media_attached.clone(),
+        game_media_manager.clone(),
     ));
     let update_meme_pack = Arc::new(crate::features::game::UpdateMemePackCommand::new(game_repository.clone()));
     let delete_meme_pack = Arc::new(crate::features::game::DeleteMemePackCommand::new(game_repository.clone()));
     let add_memes_to_pack = Arc::new(crate::features::game::AddMemesToPackCommand::new(
         game_repository.clone(),
         mark_media_attached.clone(),
+        game_media_manager.clone(),
     ));
     let delete_pack_meme = Arc::new(crate::features::game::DeletePackMemeCommand::new(game_repository.clone()));
     let create_situation_pack = Arc::new(crate::features::game::CreateSituationPackCommand::new(game_repository.clone()));
@@ -182,9 +189,12 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let delete_situation_pack = Arc::new(crate::features::game::DeleteSituationPackCommand::new(game_repository.clone()));
     let add_situations_to_pack = Arc::new(crate::features::game::AddSituationsToPackCommand::new(game_repository.clone()));
     let delete_pack_situation = Arc::new(crate::features::game::DeletePackSituationCommand::new(game_repository.clone()));
+
     let list_meme_packs = Arc::new(crate::features::game::ListMemePacksQuery::new(game_repository.clone()));
-    let get_meme_pack = Arc::new(crate::features::game::GetMemePackQuery::new(game_repository.clone()));
+    let list_user_meme_packs = Arc::new(crate::features::game::ListUserMemePacksQuery::new(game_repository.clone(), game_media_manager.clone()));
+    let get_meme_pack = Arc::new(crate::features::game::GetMemePackQuery::new(game_repository.clone(), game_media_manager.clone()));
     let list_situation_packs = Arc::new(crate::features::game::ListSituationPacksQuery::new(game_repository.clone()));
+    let list_user_situation_packs = Arc::new(crate::features::game::ListUserSituationPacksQuery::new(game_repository.clone()));
     let get_situation_pack = Arc::new(crate::features::game::GetSituationPackQuery::new(game_repository.clone()));
     let get_ws_token = Arc::new(crate::features::game::GetWsTokenQuery::new(game_repository.clone(), token_generator));
 
@@ -217,12 +227,15 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         add_situations_to_pack,
         delete_pack_situation,
         list_meme_packs,
+        list_user_meme_packs,
         get_meme_pack,
         list_situation_packs,
+        list_user_situation_packs,
         get_situation_pack,
         get_ws_token,
         process_timeout,
         timer_worker,
+        game_media_manager,
     );
 
     let state = AppState::new(

@@ -50,3 +50,23 @@ impl GetSituationPackQuery {
         Ok(SituationPackQueryResult { pack, situations })
     }
 }
+
+pub struct ListUserSituationPacksQuery {
+    repo: Arc<dyn GameRepository>,
+}
+
+impl ListUserSituationPacksQuery {
+    pub fn new(repo: Arc<dyn GameRepository>) -> Self {
+        Self { repo }
+    }
+
+    pub async fn execute(&self, author_id: Uuid) -> Result<Vec<SituationPackQueryResult>, AppError> {
+        let packs = self.repo.list_user_situation_packs(author_id).await?;
+        let mut results = Vec::new();
+        for pack in packs {
+            let situations = self.repo.get_pack_situations_list(pack.id).await?;
+            results.push(SituationPackQueryResult { pack, situations });
+        }
+        Ok(results)
+    }
+}

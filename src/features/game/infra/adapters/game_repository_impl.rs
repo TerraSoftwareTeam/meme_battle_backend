@@ -9,9 +9,9 @@ use crate::{
     features::game::domain::{
         ports::GameRepository,
         model::{
-            Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
-            PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel,
-            MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation, GamePlayerHandCardWithMedia,
+            Game, RawGameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
+            PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel, LanguageCode,
+            MemePack, PackMeme, SituationPack, PackSituation, GamePlayerHandCardWithMedia,
         },
     },
 };
@@ -64,12 +64,12 @@ impl GameRepository for GameRepositoryImpl {
         &self,
         game_id: Uuid,
         user_id: Uuid,
-    ) -> Result<Vec<GameCard>, AppError> {
+    ) -> Result<Vec<RawGameCard>, AppError> {
         #[derive(sqlx::FromRow)]
         struct RawHandRow {
             meme_id: Option<Uuid>,
             situation_id: Option<Uuid>,
-            media_url: Option<String>,
+            media_id: Option<i64>,
             prompt_text: Option<String>,
         }
 
@@ -78,11 +78,10 @@ impl GameRepository for GameRepositoryImpl {
             SELECT
                 gph.meme_id,
                 gph.situation_id,
-                ma.url AS media_url,
+                pm.media_id,
                 ps.prompt_text
             FROM game_player_hand gph
             LEFT JOIN pack_memes pm ON gph.meme_id = pm.id
-            LEFT JOIN media_assets ma ON pm.media_id = ma.id
             LEFT JOIN pack_situations ps ON gph.situation_id = ps.id
             WHERE gph.game_id = $1 AND gph.user_id = $2 AND gph.is_used = false
             "#,
@@ -96,12 +95,12 @@ impl GameRepository for GameRepositoryImpl {
             .into_iter()
             .filter_map(|row| {
                 if let Some(meme_id) = row.meme_id {
-                    Some(GameCard::Meme {
+                    Some(RawGameCard::Meme {
                         id: meme_id,
-                        media_url: row.media_url.unwrap_or_default(),
+                        media_id: row.media_id,
                     })
                 } else if let Some(situation_id) = row.situation_id {
-                    Some(GameCard::Situation {
+                    Some(RawGameCard::Situation {
                         id: situation_id,
                         prompt_text: row.prompt_text.unwrap_or_default(),
                     })
@@ -205,7 +204,7 @@ impl GameRepository for GameRepositoryImpl {
         &self,
         situation_id: Option<Uuid>,
         meme_id: Option<Uuid>,
-    ) -> Result<Option<GameCard>, AppError> {
+    ) -> Result<Option<RawGameCard>, AppError> {
         if let Some(sit_id) = situation_id {
             let text = sqlx::query_scalar::<_, String>(
                 r#"
@@ -219,30 +218,28 @@ impl GameRepository for GameRepositoryImpl {
             .await?;
 
             if let Some(text) = text {
-                return Ok(Some(GameCard::Situation {
+                return Ok(Some(RawGameCard::Situation {
                     id: sit_id,
                     prompt_text: text,
                 }));
             }
         } else if let Some(m_id) = meme_id {
-            let url = sqlx::query_scalar::<_, String>(
+            let media_id = sqlx::query_scalar::<_, Option<i64>>(
                 r#"
-                SELECT ma.url
-                FROM pack_memes pm
-                JOIN media_assets ma ON pm.media_id = ma.id
-                WHERE pm.id = $1
+                SELECT media_id
+                FROM pack_memes
+                WHERE id = $1
                 "#,
             )
             .bind(m_id)
             .fetch_optional(&self.pool)
-            .await?;
+            .await?
+            .flatten();
 
-            if let Some(url) = url {
-                return Ok(Some(GameCard::Meme {
-                    id: m_id,
-                    media_url: url,
-                }));
-            }
+            return Ok(Some(RawGameCard::Meme {
+                id: m_id,
+                media_id,
+            }));
         }
         Ok(None)
     }
@@ -1009,7 +1006,7 @@ impl GameRepository for GameRepositoryImpl {
         author_id: Uuid,
         name: &str,
         description: Option<&str>,
-        language_code: &str,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<Uuid, AppError> {
@@ -1094,14 +1091,29 @@ impl GameRepository for GameRepositoryImpl {
         Ok(packs)
     }
 
-    async fn get_pack_memes_list(&self, pack_id: Uuid) -> Result<Vec<PackMemeDetails>, AppError> {
-        let memes = sqlx::query_as::<_, PackMemeDetails>(
+    async fn list_user_meme_packs(&self, author_id: Uuid) -> Result<Vec<MemePack>, AppError> {
+        let packs = sqlx::query_as::<_, MemePack>(
             r#"
-            SELECT pm.id, pm.pack_id, pm.media_id, ma.url AS media_url
-            FROM pack_memes pm
-            JOIN media_assets ma ON pm.media_id = ma.id
-            WHERE pm.pack_id = $1
-            ORDER BY pm.id ASC
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            FROM meme_packs
+            WHERE author_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(author_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(packs)
+    }
+
+    async fn get_pack_memes_list(&self, pack_id: Uuid) -> Result<Vec<PackMeme>, AppError> {
+        let memes = sqlx::query_as::<_, PackMeme>(
+            r#"
+            SELECT id, pack_id, media_id
+            FROM pack_memes
+            WHERE pack_id = $1
+            ORDER BY id ASC
             "#,
         )
         .bind(pack_id)
@@ -1117,7 +1129,7 @@ impl GameRepository for GameRepositoryImpl {
         pack_id: Uuid,
         name: &str,
         description: Option<&str>,
-        language_code: &str,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<(), AppError> {
@@ -1190,7 +1202,7 @@ impl GameRepository for GameRepositoryImpl {
         author_id: Uuid,
         name: &str,
         description: Option<&str>,
-        language_code: &str,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<Uuid, AppError> {
@@ -1276,6 +1288,22 @@ impl GameRepository for GameRepositoryImpl {
         Ok(packs)
     }
 
+    async fn list_user_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError> {
+        let packs = sqlx::query_as::<_, SituationPack>(
+            r#"
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            FROM situation_packs
+            WHERE author_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(author_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(packs)
+    }
+
     async fn get_pack_situations_list(&self, pack_id: Uuid) -> Result<Vec<PackSituation>, AppError> {
         let situations = sqlx::query_as::<_, PackSituation>(
             r#"
@@ -1298,7 +1326,7 @@ impl GameRepository for GameRepositoryImpl {
         pack_id: Uuid,
         name: &str,
         description: Option<&str>,
-        language_code: &str,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<(), AppError> {
@@ -1364,33 +1392,7 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
-    async fn validate_media_exists(&self, media_ids: &[i64]) -> Result<(), AppError> {
-        if media_ids.is_empty() {
-            return Ok(());
-        }
 
-        let found: Vec<i64> = sqlx::query_scalar(
-            r#"SELECT id FROM media_assets WHERE id = ANY($1)"#,
-        )
-        .bind(media_ids)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let missing: Vec<i64> = media_ids
-            .iter()
-            .copied()
-            .filter(|id| !found.contains(id))
-            .collect();
-
-        if !missing.is_empty() {
-            return Err(AppError::NotFound(format!(
-                "Media assets not found: {:?}",
-                missing
-            )));
-        }
-
-        Ok(())
-    }
 
     async fn start_game(
         &self,

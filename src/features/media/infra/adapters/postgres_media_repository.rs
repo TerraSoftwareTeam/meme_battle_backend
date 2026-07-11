@@ -245,4 +245,26 @@ impl MediaRepository for PostgresMediaRepository {
 
         Ok(())
     }
+
+    async fn validate_exists(&self, ids: &[i64]) -> Result<(), AppError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) FROM media_assets
+            WHERE id = ANY($1)
+            "#,
+        )
+        .bind(ids)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if count != ids.len() as i64 {
+            return Err(AppError::NotFound("Media assets not found".to_string()));
+        }
+
+        Ok(())
+    }
 }

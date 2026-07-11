@@ -1,7 +1,9 @@
 pub mod media_asset_to_user_avatar_adapter;
 pub mod game_notification_sender_adapter;
 pub mod game_token_generator_adapter;
+pub mod game_media_manager_adapter;
 
 pub use media_asset_to_user_avatar_adapter::MediaAssetToUserAvatarAdapter;
 pub use game_notification_sender_adapter::GameNotificationSenderAdapter;
 pub use game_token_generator_adapter::GameTokenGeneratorAdapter;
+pub use game_media_manager_adapter::GameMediaManagerAdapter;

@@ -7,9 +7,9 @@ use chrono::{DateTime, Utc};
 use crate::{
     common::http::error::AppError,
     features::game::domain::model::{
-        Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
-        PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel,
-        MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation, GamePlayerHandCardWithMedia,
+        Game, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
+        PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel, LanguageCode,
+        MemePack, PackMeme, SituationPack, PackSituation, GamePlayerHandCardWithMedia, RawGameCard,
     },
 };
 
@@ -17,7 +17,7 @@ use crate::{
 pub trait GameRepository: Send + Sync {
     async fn find_game(&self, game_id: Uuid) -> Result<Option<Game>, AppError>;
     async fn get_players(&self, game_id: Uuid) -> Result<Vec<GamePlayer>, AppError>;
-    async fn get_player_hand(&self, game_id: Uuid, user_id: Uuid) -> Result<Vec<GameCard>, AppError>;
+    async fn get_player_hand(&self, game_id: Uuid, user_id: Uuid) -> Result<Vec<RawGameCard>, AppError>;
     async fn get_player_hand_with_media(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -31,7 +31,7 @@ pub trait GameRepository: Send + Sync {
         &self,
         situation_id: Option<Uuid>,
         meme_id: Option<Uuid>,
-    ) -> Result<Option<GameCard>, AppError>;
+    ) -> Result<Option<RawGameCard>, AppError>;
     async fn get_available_memes(&self, game_id: Uuid) -> Result<Vec<Uuid>, AppError>;
     async fn get_available_situations(&self, game_id: Uuid) -> Result<Vec<Uuid>, AppError>;
     async fn get_submission_by_id(&self, submission_id: Uuid)
@@ -263,7 +263,7 @@ pub trait GameRepository: Send + Sync {
         author_id: Uuid,
         name: &str,
         description: Option<&str>,
-        language_code: &str,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<Uuid, AppError>;
@@ -277,14 +277,15 @@ pub trait GameRepository: Send + Sync {
 
     async fn find_meme_pack(&self, pack_id: Uuid) -> Result<Option<MemePack>, AppError>;
     async fn list_meme_packs(&self, author_id: Uuid) -> Result<Vec<MemePack>, AppError>;
-    async fn get_pack_memes_list(&self, pack_id: Uuid) -> Result<Vec<PackMemeDetails>, AppError>;
+    async fn list_user_meme_packs(&self, author_id: Uuid) -> Result<Vec<MemePack>, AppError>;
+    async fn get_pack_memes_list(&self, pack_id: Uuid) -> Result<Vec<PackMeme>, AppError>;
     async fn update_meme_pack(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         pack_id: Uuid,
         name: &str,
         description: Option<&str>,
-        language_code: &str,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<(), AppError>;
@@ -298,7 +299,7 @@ pub trait GameRepository: Send + Sync {
         author_id: Uuid,
         name: &str,
         description: Option<&str>,
-        language_code: &str,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<Uuid, AppError>;
@@ -310,6 +311,7 @@ pub trait GameRepository: Send + Sync {
     ) -> Result<Uuid, AppError>;
     async fn find_situation_pack(&self, pack_id: Uuid) -> Result<Option<SituationPack>, AppError>;
     async fn list_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError>;
+    async fn list_user_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError>;
     async fn get_pack_situations_list(&self, pack_id: Uuid) -> Result<Vec<PackSituation>, AppError>;
     async fn update_situation_pack(
         &self,
@@ -317,7 +319,7 @@ pub trait GameRepository: Send + Sync {
         pack_id: Uuid,
         name: &str,
         description: Option<&str>,
-        language_code: &str,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<(), AppError>;
@@ -325,7 +327,7 @@ pub trait GameRepository: Send + Sync {
     async fn find_pack_situation_by_id(&self, situation_id: Uuid) -> Result<Option<PackSituation>, AppError>;
     async fn delete_pack_situation(&self, tx: &mut Transaction<'_, Postgres>, situation_id: Uuid) -> Result<(), AppError>;
 
-    async fn validate_media_exists(&self, media_ids: &[i64]) -> Result<(), AppError>;
+
 
     async fn start_game(
         &self,

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::features::game::domain::model::{
-    Game, GameCard, GameMode, GameStatus, PlayerSubmissionState, RoundPhase, ContentSafetyLevel,
+    Game, GameCard, GameMode, GameStatus, PlayerSubmissionState, RoundPhase, ContentSafetyLevel, LanguageCode,
     MemePack, PackMemeDetails, SituationPack, PackSituation,
 };
 
@@ -112,7 +112,7 @@ pub struct ReadyRequest {
 pub struct CreateMemePackRequest {
     pub name: String,
     pub description: Option<String>,
-    pub language_code: String,
+    pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
     pub media_ids: Vec<i64>,
@@ -127,7 +127,7 @@ pub struct CreateMemePackResponse {
 pub struct UpdateMemePackRequest {
     pub name: String,
     pub description: Option<String>,
-    pub language_code: String,
+    pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
 }
@@ -143,7 +143,7 @@ pub struct MemePackDto {
     pub author_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub language_code: String,
+    pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
     pub created_at: String,
@@ -194,7 +194,7 @@ pub struct MemePackDetailsResponse {
 pub struct CreateSituationPackRequest {
     pub name: String,
     pub description: Option<String>,
-    pub language_code: String,
+    pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
     pub prompts: Vec<String>,
@@ -209,7 +209,7 @@ pub struct CreateSituationPackResponse {
 pub struct UpdateSituationPackRequest {
     pub name: String,
     pub description: Option<String>,
-    pub language_code: String,
+    pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
 }
@@ -225,7 +225,7 @@ pub struct SituationPackDto {
     pub author_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub language_code: String,
+    pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
     pub created_at: String,

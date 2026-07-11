@@ -29,7 +29,7 @@ use meme_battle_backend::{
             ReadyRequest, SituationPackDetailsResponse, SubmitCardRequest, UpdateGameRequest,
             UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest,
         },
-        ContentSafetyLevel, GameCard, GameMode, RoundPhase,
+        ContentSafetyLevel, LanguageCode, GameCard, GameMode, RoundPhase,
     },
 };
 
@@ -162,7 +162,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let meme_pack_payload = CreateMemePackRequest {
         name: "Test Meme Pack".to_string(),
         description: Some("Description".to_string()),
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false, // private pack
         media_ids: (2001..=2024).collect(),
@@ -185,7 +185,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let sit_pack_payload = CreateSituationPackRequest {
         name: "Test Situation Pack".to_string(),
         description: Some("Description".to_string()),
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false, // private pack
         prompts: vec![
@@ -261,6 +261,50 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         sit_pack_details.0.data.unwrap().pack.name,
         "Test Situation Pack"
     );
+
+    // Test list_user_meme_packs endpoint
+    let (status_my_memes, bytes_my_memes) = send_request::<()>(
+        &app,
+        Method::GET,
+        "/games/packs/memes/me",
+        Some(&token1),
+        None,
+    )
+    .await;
+    assert_eq!(status_my_memes, StatusCode::OK);
+    let my_memes: RestApiResponse<Vec<MemePackDetailsResponse>> =
+        serde_json::from_slice(&bytes_my_memes).unwrap();
+    let my_memes_data = my_memes.0.data.unwrap();
+    assert!(my_memes_data.iter().any(|p| p.pack.id == meme_pack_id));
+
+    // Test list_user_situation_packs endpoint
+    let (status_my_sits, bytes_my_sits) = send_request::<()>(
+        &app,
+        Method::GET,
+        "/games/packs/situations/me",
+        Some(&token1),
+        None,
+    )
+    .await;
+    assert_eq!(status_my_sits, StatusCode::OK);
+    let my_sits: RestApiResponse<Vec<SituationPackDetailsResponse>> =
+        serde_json::from_slice(&bytes_my_sits).unwrap();
+    let my_sits_data = my_sits.0.data.unwrap();
+    assert!(my_sits_data.iter().any(|p| p.pack.id == sit_pack_id));
+
+    // For token2, the returned list shouldn't contain these packs as token2 didn't create them
+    let (status_my_memes2, bytes_my_memes2) = send_request::<()>(
+        &app,
+        Method::GET,
+        "/games/packs/memes/me",
+        Some(&token2),
+        None,
+    )
+    .await;
+    assert_eq!(status_my_memes2, StatusCode::OK);
+    let my_memes2: RestApiResponse<Vec<MemePackDetailsResponse>> =
+        serde_json::from_slice(&bytes_my_memes2).unwrap();
+    assert!(!my_memes2.0.data.unwrap().iter().any(|p| p.pack.id == meme_pack_id));
 
     // 5. Create Game
     let create_game_payload = CreateGameRequest {
@@ -561,7 +605,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let update_meme_payload = UpdateMemePackRequest {
         name: "Updated Pack Name".to_string(),
         description: Some("New desc".to_string()),
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::Explicit,
         is_public: true,
     };
@@ -669,7 +713,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let update_sit_payload = UpdateSituationPackRequest {
         name: "Updated Situation Pack".to_string(),
         description: Some("New sit desc".to_string()),
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::Explicit,
         is_public: true,
     };
@@ -788,7 +832,7 @@ async fn test_nonexistent_media_returns_404() {
     let create_payload = CreateMemePackRequest {
         name: "Ghost Pack".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         media_ids: vec![nonexistent_media_id],
@@ -829,7 +873,7 @@ async fn test_nonexistent_media_returns_404() {
     let valid_create = CreateMemePackRequest {
         name: "Real Pack".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         media_ids: vec![],
@@ -937,7 +981,7 @@ async fn test_duplicate_pack_item_returns_conflict() {
     let create_payload = CreateMemePackRequest {
         name: "Dup Test Pack".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         media_ids: vec![media_id],
@@ -991,7 +1035,7 @@ async fn test_duplicate_pack_item_returns_conflict() {
     let sit_create = CreateSituationPackRequest {
         name: "Dup Sit Pack".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         prompts: vec![prompt.clone()],
@@ -1116,7 +1160,7 @@ async fn test_game_start_deterministic_and_precomputes() {
     let meme_create = CreateMemePackRequest {
         name: "Deterministic Test Memes".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         media_ids: (3001..=3020).collect(),
@@ -1138,7 +1182,7 @@ async fn test_game_start_deterministic_and_precomputes() {
     let sit_create = CreateSituationPackRequest {
         name: "Deterministic Test Situations".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         prompts: vec![
@@ -1373,7 +1417,7 @@ async fn test_game_settings_update() {
     let sit_create = CreateSituationPackRequest {
         name: "Settings Test Situations".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         prompts: vec![
@@ -1408,7 +1452,7 @@ async fn test_game_settings_update() {
     let meme_create = CreateMemePackRequest {
         name: "Settings Test Memes".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         media_ids: vec![4001],
@@ -1571,7 +1615,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     let meme_create = CreateMemePackRequest {
         name: "Completion Test Memes".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         media_ids: (5001..=5006).collect(),
@@ -1595,7 +1639,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     let sit_create = CreateSituationPackRequest {
         name: "Completion Test Situations".to_string(),
         description: None,
-        language_code: "ru".to_string(),
+        language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
         prompts: vec!["Completion prompt".to_string()],

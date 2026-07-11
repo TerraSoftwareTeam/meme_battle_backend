@@ -19,17 +19,17 @@ pub use application::commands::{
 // Re-export queries
 pub use application::queries::{
     get_game_state::{GetGameStateQuery, GameStateResult},
-    meme_pack_queries::{ListMemePacksQuery, GetMemePackQuery, MemePackQueryResult},
-    situation_pack_queries::{ListSituationPacksQuery, GetSituationPackQuery, SituationPackQueryResult},
+    meme_pack_queries::{ListMemePacksQuery, GetMemePackQuery, MemePackQueryResult, ListUserMemePacksQuery},
+    situation_pack_queries::{ListSituationPacksQuery, GetSituationPackQuery, SituationPackQueryResult, ListUserSituationPacksQuery},
     get_ws_token::{GetWsTokenQuery, WsTokenResult},
 };
 
 // Re-export domain models & repo port
 pub use domain::{
     model::{
-        ContentSafetyLevel, Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound,
+        ContentSafetyLevel, LanguageCode, Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound,
         GameStatus, PlayerSubmissionState, RoundPhase, RoundSubmission, RoundVote,
-        MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation, GamePlayerHandCardWithMedia,
+        MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation, GamePlayerHandCardWithMedia, RawGameCard,
     },
     ports::game_repository::GameRepository,
 };
@@ -37,6 +37,7 @@ pub use domain::{
 // Re-export application ports
 pub use application::ports::game_notification_sender::GameNotificationSender;
 pub use application::ports::game_token_generator::GameTokenGenerator;
+pub use application::ports::game_media_manager::GameMediaManager;
 
 // Re-export infrastructure adapter
 pub use infra::adapters::GameRepositoryImpl;
@@ -65,12 +66,15 @@ pub struct GameState {
     pub add_situations_to_pack: Arc<AddSituationsToPackCommand>,
     pub delete_pack_situation: Arc<DeletePackSituationCommand>,
     pub list_meme_packs: Arc<ListMemePacksQuery>,
+    pub list_user_meme_packs: Arc<ListUserMemePacksQuery>,
     pub get_meme_pack: Arc<GetMemePackQuery>,
     pub list_situation_packs: Arc<ListSituationPacksQuery>,
+    pub list_user_situation_packs: Arc<ListUserSituationPacksQuery>,
     pub get_situation_pack: Arc<GetSituationPackQuery>,
     pub get_ws_token: Arc<GetWsTokenQuery>,
     pub process_timeout: Arc<ProcessTimeoutCommand>,
     pub timer_worker: Arc<GameTimerWorker>,
+    pub media_manager: Arc<dyn GameMediaManager>,
 }
 
 impl GameState {
@@ -94,12 +98,15 @@ impl GameState {
         add_situations_to_pack: Arc<AddSituationsToPackCommand>,
         delete_pack_situation: Arc<DeletePackSituationCommand>,
         list_meme_packs: Arc<ListMemePacksQuery>,
+        list_user_meme_packs: Arc<ListUserMemePacksQuery>,
         get_meme_pack: Arc<GetMemePackQuery>,
         list_situation_packs: Arc<ListSituationPacksQuery>,
+        list_user_situation_packs: Arc<ListUserSituationPacksQuery>,
         get_situation_pack: Arc<GetSituationPackQuery>,
         get_ws_token: Arc<GetWsTokenQuery>,
         process_timeout: Arc<ProcessTimeoutCommand>,
         timer_worker: Arc<GameTimerWorker>,
+        media_manager: Arc<dyn GameMediaManager>,
     ) -> Self {
         Self {
             create_game,
@@ -121,12 +128,15 @@ impl GameState {
             add_situations_to_pack,
             delete_pack_situation,
             list_meme_packs,
+            list_user_meme_packs,
             get_meme_pack,
             list_situation_packs,
+            list_user_situation_packs,
             get_situation_pack,
             get_ws_token,
             process_timeout,
             timer_worker,
+            media_manager,
         }
     }
 }

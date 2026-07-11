@@ -25,3 +25,9 @@ pub struct GamePlayerHandCardWithMedia {
     pub media_id: Option<i64>,
     pub text: Option<String>,
 }
+
+#[derive(Debug, Clone)]
+pub enum RawGameCard {
+    Meme { id: Uuid, media_id: Option<i64> },
+    Situation { id: Uuid, prompt_text: String },
+}

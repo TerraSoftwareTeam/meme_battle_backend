@@ -4,11 +4,7 @@ use opentelemetry::trace::TracerProvider;
 use opentelemetry::{global, KeyValue};
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_otlp::{LogExporter, SpanExporter, WithExportConfig};
-use opentelemetry_sdk::{
-    logs::SdkLoggerProvider,
-    trace::SdkTracerProvider,
-    Resource,
-};
+use opentelemetry_sdk::{logs::SdkLoggerProvider, trace::SdkTracerProvider, Resource};
 use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
 use std::{error::Error, sync::OnceLock};
 use tracing_opentelemetry::OpenTelemetryLayer;
@@ -142,7 +138,10 @@ pub fn setup_tracing_opentelemetry() -> OtelProviders {
             .init();
     }
 
-    OtelProviders { tracer_provider, logger_provider }
+    OtelProviders {
+        tracer_provider,
+        logger_provider,
+    }
 }
 
 // shutdown_opentelemetry gracefully shuts down both providers, flushing all pending data.

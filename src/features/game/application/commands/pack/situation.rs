@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::{
     common::http::error::AppError,
     features::game::domain::{
-        model::ContentSafetyLevel,
+        model::{ContentSafetyLevel, LanguageCode},
         ports::GameRepository,
     },
 };
@@ -23,7 +23,7 @@ impl CreateSituationPackCommand {
         author_id: Uuid,
         name: String,
         description: Option<String>,
-        language_code: String,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
         prompts: Vec<String>,
@@ -37,7 +37,7 @@ impl CreateSituationPackCommand {
                 author_id,
                 &name,
                 description.as_deref(),
-                &language_code,
+                language_code,
                 safety_level,
                 is_public,
             )
@@ -68,7 +68,7 @@ impl UpdateSituationPackCommand {
         pack_id: Uuid,
         name: String,
         description: Option<String>,
-        language_code: String,
+        language_code: LanguageCode,
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<(), AppError> {
@@ -86,7 +86,7 @@ impl UpdateSituationPackCommand {
                 pack_id,
                 &name,
                 description.as_deref(),
-                &language_code,
+                language_code,
                 safety_level,
                 is_public,
             )

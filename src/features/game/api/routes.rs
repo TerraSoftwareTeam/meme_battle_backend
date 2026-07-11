@@ -28,10 +28,12 @@ pub fn game_routes() -> Router<AppState> {
         .route("/", post(handlers::create_game))
         .route("/{id}", patch(handlers::update_game))
         .route("/packs/memes", post(handlers::create_meme_pack).get(handlers::list_meme_packs))
+        .route("/packs/memes/me", get(handlers::list_user_meme_packs))
         .route("/packs/memes/{id}", get(handlers::get_meme_pack).patch(handlers::update_meme_pack).delete(handlers::delete_meme_pack))
         .route("/packs/memes/{id}/memes", post(handlers::add_memes_to_pack))
         .route("/packs/memes/{id}/memes/{meme_id}", delete(handlers::delete_pack_meme))
         .route("/packs/situations", post(handlers::create_situation_pack).get(handlers::list_situation_packs))
+        .route("/packs/situations/me", get(handlers::list_user_situation_packs))
         .route("/packs/situations/{id}", get(handlers::get_situation_pack).patch(handlers::update_situation_pack).delete(handlers::delete_situation_pack))
         .route("/packs/situations/{id}/situations", post(handlers::add_situations_to_pack))
         .route("/packs/situations/{id}/situations/{situation_id}", delete(handlers::delete_pack_situation))
@@ -58,6 +60,7 @@ pub fn game_routes() -> Router<AppState> {
         handlers::vote_card,
         handlers::create_meme_pack,
         handlers::list_meme_packs,
+        handlers::list_user_meme_packs,
         handlers::get_meme_pack,
         handlers::update_meme_pack,
         handlers::delete_meme_pack,
@@ -65,6 +68,7 @@ pub fn game_routes() -> Router<AppState> {
         handlers::delete_pack_meme,
         handlers::create_situation_pack,
         handlers::list_situation_packs,
+        handlers::list_user_situation_packs,
         handlers::get_situation_pack,
         handlers::update_situation_pack,
         handlers::delete_situation_pack,

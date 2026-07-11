@@ -34,4 +34,6 @@ pub trait MediaRepository: Send + Sync {
     ) -> Result<bool, AppError>;
 
     async fn mark_attached(&self, ids: &[i64]) -> Result<(), AppError>;
+
+    async fn validate_exists(&self, ids: &[i64]) -> Result<(), AppError>;
 }

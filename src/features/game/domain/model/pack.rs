@@ -13,13 +13,24 @@ pub enum ContentSafetyLevel {
     Explicit,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, Serialize, Deserialize, utoipa::ToSchema,
+)]
+#[sqlx(type_name = "language_code", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum LanguageCode {
+    Ru,
+    En,
+    Und,
+}
+
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct MemePack {
     pub id: Uuid,
     pub author_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub language_code: String,
+    pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
     pub created_at: DateTime<Utc>,
@@ -46,7 +57,7 @@ pub struct SituationPack {
     pub author_id: Uuid,
     pub name: String,
     pub description: Option<String>,
-    pub language_code: String,
+    pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
     pub created_at: DateTime<Utc>,

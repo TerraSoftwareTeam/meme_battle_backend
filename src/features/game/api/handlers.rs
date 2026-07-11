@@ -659,3 +659,59 @@ pub async fn delete_pack_situation(
     Ok(RestApiResponse::success_with_message("Situation removed from pack successfully".to_string(), ()))
 }
 
+#[utoipa::path(
+    get,
+    path = "/games/packs/memes/me",
+    responses((status = 200, description = "List meme packs created by current user", body = [MemePackDetailsResponse])),
+    tag = "Meme Packs",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn list_user_meme_packs(
+    State(state): State<GameState>,
+    current_user: CurrentUser,
+) -> Result<impl IntoResponse, AppError> {
+    let user_id = Uuid::parse_str(&current_user.user_id)
+        .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
+
+    let results = state.list_user_meme_packs.execute(user_id).await?;
+    let dtos: Vec<MemePackDetailsResponse> = results
+        .into_iter()
+        .map(|res| MemePackDetailsResponse {
+            pack: MemePackDto::from(res.pack),
+            memes: res.memes.into_iter().map(PackMemeDetailsDto::from).collect(),
+        })
+        .collect();
+
+    Ok(RestApiResponse::success(dtos))
+}
+
+#[utoipa::path(
+    get,
+    path = "/games/packs/situations/me",
+    responses((status = 200, description = "List situation packs created by current user", body = [SituationPackDetailsResponse])),
+    tag = "Situation Packs",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn list_user_situation_packs(
+    State(state): State<GameState>,
+    current_user: CurrentUser,
+) -> Result<impl IntoResponse, AppError> {
+    let user_id = Uuid::parse_str(&current_user.user_id)
+        .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
+
+    let results = state.list_user_situation_packs.execute(user_id).await?;
+    let dtos: Vec<SituationPackDetailsResponse> = results
+        .into_iter()
+        .map(|res| SituationPackDetailsResponse {
+            pack: SituationPackDto::from(res.pack),
+            situations: res.situations.into_iter().map(PackSituationDto::from).collect(),
+        })
+        .collect();
+
+    Ok(RestApiResponse::success(dtos))
+}
+

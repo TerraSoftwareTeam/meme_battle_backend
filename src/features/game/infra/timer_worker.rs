@@ -145,11 +145,11 @@ mod tests {
 
         async fn find_game(&self, _game_id: Uuid) -> Result<Option<Game>, AppError> { todo!() }
         async fn get_players(&self, _game_id: Uuid) -> Result<Vec<GamePlayer>, AppError> { todo!() }
-        async fn get_player_hand(&self, _game_id: Uuid, _user_id: Uuid) -> Result<Vec<GameCard>, AppError> { todo!() }
+        async fn get_player_hand(&self, _game_id: Uuid, _user_id: Uuid) -> Result<Vec<RawGameCard>, AppError> { todo!() }
         async fn get_player_hand_with_media(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid) -> Result<Vec<GamePlayerHandCardWithMedia>, AppError> { todo!() }
         async fn get_current_round(&self, _game_id: Uuid) -> Result<Option<GameRound>, AppError> { todo!() }
         async fn get_round(&self, _round_id: Uuid) -> Result<Option<GameRound>, AppError> { todo!() }
-        async fn get_prompt_card(&self, _situation_id: Option<Uuid>, _meme_id: Option<Uuid>) -> Result<Option<GameCard>, AppError> { todo!() }
+        async fn get_prompt_card(&self, _situation_id: Option<Uuid>, _meme_id: Option<Uuid>) -> Result<Option<RawGameCard>, AppError> { todo!() }
         async fn get_available_memes(&self, _game_id: Uuid) -> Result<Vec<Uuid>, AppError> { todo!() }
         async fn get_available_situations(&self, _game_id: Uuid) -> Result<Vec<Uuid>, AppError> { todo!() }
         async fn get_submission_by_id(&self, _submission_id: Uuid) -> Result<Option<RoundSubmission>, AppError> { todo!() }
@@ -182,25 +182,27 @@ mod tests {
         async fn get_prompt_details(&self, _tx: &mut Transaction<'_, Postgres>, _prompt_kind: &str, _prompt_id: Uuid) -> Result<(Option<i64>, Option<String>), AppError> { todo!() }
         async fn insert_game_event(&self, _tx: &mut Transaction<'_, Postgres>, _event_id: Uuid, _game_id: Uuid, _version: i64, _event_type: &str, _payload: serde_json::Value) -> Result<(), AppError> { todo!() }
         async fn update_game_current_round(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _new_round: i32) -> Result<(), AppError> { todo!() }
-        async fn insert_meme_pack(&self, _tx: &mut Transaction<'_, Postgres>, _author_id: Uuid, _name: &str, _description: Option<&str>, _language_code: &str, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<Uuid, AppError> { todo!() }
+        async fn insert_meme_pack(&self, _tx: &mut Transaction<'_, Postgres>, _author_id: Uuid, _name: &str, _description: Option<&str>, _language_code: LanguageCode, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<Uuid, AppError> { todo!() }
         async fn insert_pack_meme(&self, _tx: &mut Transaction<'_, Postgres>, _pack_id: Uuid, _media_id: i64) -> Result<(), AppError> { todo!() }
         async fn find_meme_pack(&self, _pack_id: Uuid) -> Result<Option<MemePack>, AppError> { todo!() }
         async fn list_meme_packs(&self, _author_id: Uuid) -> Result<Vec<MemePack>, AppError> { todo!() }
-        async fn get_pack_memes_list(&self, _pack_id: Uuid) -> Result<Vec<PackMemeDetails>, AppError> { todo!() }
-        async fn update_meme_pack(&self, _tx: &mut Transaction<'_, Postgres>, _pack_id: Uuid, _name: &str, _description: Option<&str>, _language_code: &str, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<(), AppError> { todo!() }
+        async fn list_user_meme_packs(&self, _author_id: Uuid) -> Result<Vec<MemePack>, AppError> { todo!() }
+        async fn get_pack_memes_list(&self, _pack_id: Uuid) -> Result<Vec<PackMeme>, AppError> { todo!() }
+        async fn update_meme_pack(&self, _tx: &mut Transaction<'_, Postgres>, _pack_id: Uuid, _name: &str, _description: Option<&str>, _language_code: LanguageCode, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<(), AppError> { todo!() }
         async fn delete_meme_pack(&self, _tx: &mut Transaction<'_, Postgres>, _pack_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn find_pack_meme_by_id(&self, _meme_id: Uuid) -> Result<Option<PackMeme>, AppError> { todo!() }
         async fn delete_pack_meme(&self, _tx: &mut Transaction<'_, Postgres>, _meme_id: Uuid) -> Result<(), AppError> { todo!() }
-        async fn insert_situation_pack(&self, _tx: &mut Transaction<'_, Postgres>, _author_id: Uuid, _name: &str, _description: Option<&str>, _language_code: &str, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<Uuid, AppError> { todo!() }
+        async fn insert_situation_pack(&self, _tx: &mut Transaction<'_, Postgres>, _author_id: Uuid, _name: &str, _description: Option<&str>, _language_code: LanguageCode, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<Uuid, AppError> { todo!() }
         async fn insert_pack_situation(&self, _tx: &mut Transaction<'_, Postgres>, _pack_id: Uuid, _prompt_text: &str) -> Result<Uuid, AppError> { todo!() }
         async fn find_situation_pack(&self, _pack_id: Uuid) -> Result<Option<SituationPack>, AppError> { todo!() }
         async fn list_situation_packs(&self, _author_id: Uuid) -> Result<Vec<SituationPack>, AppError> { todo!() }
+        async fn list_user_situation_packs(&self, _author_id: Uuid) -> Result<Vec<SituationPack>, AppError> { todo!() }
         async fn get_pack_situations_list(&self, _pack_id: Uuid) -> Result<Vec<PackSituation>, AppError> { todo!() }
-        async fn update_situation_pack(&self, _tx: &mut Transaction<'_, Postgres>, _pack_id: Uuid, _name: &str, _description: Option<&str>, _language_code: &str, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<(), AppError> { todo!() }
+        async fn update_situation_pack(&self, _tx: &mut Transaction<'_, Postgres>, _pack_id: Uuid, _name: &str, _description: Option<&str>, _language_code: LanguageCode, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<(), AppError> { todo!() }
         async fn delete_situation_pack(&self, _tx: &mut Transaction<'_, Postgres>, _pack_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn find_pack_situation_by_id(&self, _situation_id: Uuid) -> Result<Option<PackSituation>, AppError> { todo!() }
         async fn delete_pack_situation(&self, _tx: &mut Transaction<'_, Postgres>, _situation_id: Uuid) -> Result<(), AppError> { todo!() }
-        async fn validate_media_exists(&self, _media_ids: &[i64]) -> Result<(), AppError> { todo!() }
+
         async fn start_game(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _started_at: chrono::DateTime<chrono::Utc>) -> Result<(), AppError> { todo!() }
         async fn insert_player_reserve(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _draw_order: i32, _meme_id: Option<Uuid>, _situation_id: Option<Uuid>) -> Result<(), AppError> { todo!() }
         async fn insert_content_lock(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _meme_id: Option<Uuid>, _situation_id: Option<Uuid>) -> Result<(), AppError> { todo!() }
