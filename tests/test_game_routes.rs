@@ -27,7 +27,7 @@ use meme_battle_backend::{
             CreateMemePackRequest, CreateMemePackResponse, CreateSituationPackRequest,
             CreateSituationPackResponse, GameDto, GameStateDto, MemePackDetailsResponse,
             ReadyRequest, SituationPackDetailsResponse, SubmitCardRequest, UpdateGameRequest,
-            UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest,
+            UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest, ActiveGameDto,
         },
         ContentSafetyLevel, LanguageCode, GameCard, GameMode, RoundPhase,
     },
@@ -1920,3 +1920,206 @@ async fn test_game_play_to_completion_deletes_locks() {
             .get::<i64, _>(0);
     assert_eq!(locks_count_after, 0);
 }
+
+#[tokio::test]
+async fn test_game_catalog_endpoint() {
+    let (pool, app) = setup_db_and_router().await;
+
+    // Clean up games table to isolate this test's catalog assertions
+    sqlx::query("DELETE FROM games").execute(&pool).await.unwrap();
+
+    // Create guest users
+    let (status1, bytes1) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    assert_eq!(status1, StatusCode::OK);
+    let auth_resp1: RestApiResponse<Value> = serde_json::from_slice(&bytes1).unwrap();
+    let token1 = auth_resp1.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    let (status2, bytes2) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    assert_eq!(status2, StatusCode::OK);
+    let auth_resp2: RestApiResponse<Value> = serde_json::from_slice(&bytes2).unwrap();
+    let token2 = auth_resp2.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    let (status3, bytes3) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    assert_eq!(status3, StatusCode::OK);
+    let auth_resp3: RestApiResponse<Value> = serde_json::from_slice(&bytes3).unwrap();
+    let token3 = auth_resp3.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default()).unwrap().claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
+
+    // Setup 24 dummy media assets
+    for id in 3001..=3024 {
+        sqlx::query(
+            "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
+             VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
+             ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(id as i64)
+        .bind(user_id1)
+        .bind(format!("prov_catalog_id_{}", id))
+        .bind(format!("https://example.com/catalog_{}.png", id))
+        .bind(format!("meme_catalog_{}.png", id))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    // Create Meme Pack
+    let meme_pack_payload = CreateMemePackRequest {
+        name: "Catalog Meme Pack".to_string(),
+        description: Some("Description".to_string()),
+        language_code: LanguageCode::Ru,
+        safety_level: ContentSafetyLevel::FamilyFriendly,
+        is_public: false,
+        media_ids: (3001..=3024).collect(),
+    };
+    let (status_create_meme, bytes_create_meme) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/memes",
+        Some(&token1),
+        Some(&meme_pack_payload),
+    )
+    .await;
+    assert_eq!(status_create_meme, StatusCode::OK);
+    let meme_pack_resp: RestApiResponse<CreateMemePackResponse> = serde_json::from_slice(&bytes_create_meme).unwrap();
+    let meme_pack_id = meme_pack_resp.0.data.unwrap().id;
+
+    // Create Situation Pack
+    let sit_pack_payload = CreateSituationPackRequest {
+        name: "Catalog Situation Pack".to_string(),
+        description: Some("Description".to_string()),
+        language_code: LanguageCode::Ru,
+        safety_level: ContentSafetyLevel::FamilyFriendly,
+        is_public: false,
+        prompts: vec![
+            "When catalog test works".to_string(),
+            "When we list active games".to_string(),
+            "When the third situation is added".to_string(),
+        ],
+    };
+    let (status_create_sit, bytes_create_sit) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/situations",
+        Some(&token1),
+        Some(&sit_pack_payload),
+    )
+    .await;
+    assert_eq!(status_create_sit, StatusCode::OK);
+    let sit_pack_resp: RestApiResponse<CreateSituationPackResponse> = serde_json::from_slice(&bytes_create_sit).unwrap();
+    let sit_pack_id = sit_pack_resp.0.data.unwrap().id;
+
+    // Query active games when there is none
+    let (status_list1, bytes_list1) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
+    assert_eq!(status_list1, StatusCode::OK);
+    let list_resp1: RestApiResponse<Vec<ActiveGameDto>> = serde_json::from_slice(&bytes_list1).unwrap();
+    assert_eq!(list_resp1.0.data.unwrap().len(), 0);
+
+    // Create Game 1
+    let create_payload = CreateGameRequest {
+        mode: GameMode::SituationToMeme,
+        selected_situation_pack_ids: vec![sit_pack_id],
+        selected_meme_pack_ids: vec![meme_pack_id],
+        max_rounds: 3,
+        hand_size: 5,
+    };
+    let (status_game1, bytes_game1) = send_request(
+        &app,
+        Method::POST,
+        "/games",
+        Some(&token1),
+        Some(&create_payload),
+    )
+    .await;
+    assert_eq!(status_game1, StatusCode::OK);
+    let game1_resp: RestApiResponse<GameDto> = serde_json::from_slice(&bytes_game1).unwrap();
+    let game1_id = game1_resp.0.data.unwrap().id;
+
+    // Query active games: Game 1 should be present with player count = 1
+    let (status_list2, bytes_list2) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
+    assert_eq!(status_list2, StatusCode::OK);
+    let list_resp2: RestApiResponse<Vec<ActiveGameDto>> = serde_json::from_slice(&bytes_list2).unwrap();
+    let active_games = list_resp2.0.data.unwrap();
+    assert_eq!(active_games.len(), 1);
+    assert_eq!(active_games[0].id, game1_id);
+    assert_eq!(active_games[0].players_count, 1);
+
+    // Player 2 joins Game 1
+    let (status_join, _) = send_request::<Value>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game1_id),
+        Some(&token2),
+        None,
+    )
+    .await;
+    assert_eq!(status_join, StatusCode::OK);
+
+    // Player 3 joins Game 1
+    let (status_join3, _) = send_request::<Value>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game1_id),
+        Some(&token3),
+        None,
+    )
+    .await;
+    assert_eq!(status_join3, StatusCode::OK);
+
+    // Query active games: Game 1 should be present with player count = 3
+    let (status_list3, bytes_list3) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
+    assert_eq!(status_list3, StatusCode::OK);
+    let list_resp3: RestApiResponse<Vec<ActiveGameDto>> = serde_json::from_slice(&bytes_list3).unwrap();
+    let active_games3 = list_resp3.0.data.unwrap();
+    assert_eq!(active_games3.len(), 1);
+    assert_eq!(active_games3[0].players_count, 3);
+
+    // Players ready up and start the game to change status to playing
+    let (status_ready1, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game1_id),
+        Some(&token1),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+    assert_eq!(status_ready1, StatusCode::OK);
+
+    let (status_ready2, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game1_id),
+        Some(&token2),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+    assert_eq!(status_ready2, StatusCode::OK);
+
+    let (status_ready3, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/ready", game1_id),
+        Some(&token3),
+        Some(&ReadyRequest { is_ready: true }),
+    )
+    .await;
+    assert_eq!(status_ready3, StatusCode::OK);
+
+    let (status_start, _) = send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/start", game1_id),
+        Some(&token1),
+        None,
+    )
+    .await;
+    assert_eq!(status_start, StatusCode::OK);
+
+    // Query active games: Game 1 should no longer be listed because status is 'playing'
+    let (status_list4, bytes_list4) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
+    assert_eq!(status_list4, StatusCode::OK);
+    let list_resp4: RestApiResponse<Vec<ActiveGameDto>> = serde_json::from_slice(&bytes_list4).unwrap();
+    assert_eq!(list_resp4.0.data.unwrap().len(), 0);
+}
+

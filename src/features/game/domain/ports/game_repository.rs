@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use crate::{
     common::http::error::AppError,
     features::game::domain::model::{
-        Game, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
+        Game, ActiveGame, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
         PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel, LanguageCode,
         MemePack, PackMeme, SituationPack, PackSituation, GamePlayerHandCardWithMedia, RawGameCard,
     },
@@ -16,6 +16,7 @@ use crate::{
 #[async_trait]
 pub trait GameRepository: Send + Sync {
     async fn find_game(&self, game_id: Uuid) -> Result<Option<Game>, AppError>;
+    async fn find_active_lobby_games(&self) -> Result<Vec<ActiveGame>, AppError>;
     async fn get_players(&self, game_id: Uuid) -> Result<Vec<GamePlayer>, AppError>;
     async fn get_player_hand(&self, game_id: Uuid, user_id: Uuid) -> Result<Vec<RawGameCard>, AppError>;
     async fn get_player_hand_with_media(

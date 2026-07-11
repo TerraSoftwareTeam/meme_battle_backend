@@ -144,6 +144,7 @@ mod tests {
         }
 
         async fn find_game(&self, _game_id: Uuid) -> Result<Option<Game>, AppError> { todo!() }
+        async fn find_active_lobby_games(&self) -> Result<Vec<ActiveGame>, AppError> { todo!() }
         async fn get_players(&self, _game_id: Uuid) -> Result<Vec<GamePlayer>, AppError> { todo!() }
         async fn get_player_hand(&self, _game_id: Uuid, _user_id: Uuid) -> Result<Vec<RawGameCard>, AppError> { todo!() }
         async fn get_player_hand_with_media(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid) -> Result<Vec<GamePlayerHandCardWithMedia>, AppError> { todo!() }

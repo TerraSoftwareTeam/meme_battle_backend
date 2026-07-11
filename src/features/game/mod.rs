@@ -8,36 +8,42 @@ pub use api::routes::{game_routes, GameApiDoc};
 
 // Re-export commands
 pub use application::commands::{
-    CreateGameCommand, JoinGameCommand, SetReadyCommand, StartGameCommand,
-    SubmitCardCommand, VoteCardCommand, CreateMemePackCommand, UpdateMemePackCommand,
-    DeleteMemePackCommand, AddMemesToPackCommand, DeletePackMemeCommand,
-    CreateSituationPackCommand, UpdateSituationPackCommand, DeleteSituationPackCommand,
-    AddSituationsToPackCommand, DeletePackSituationCommand, UpdateGameCommand,
-    ProcessTimeoutCommand,
+    AddMemesToPackCommand, AddSituationsToPackCommand, CreateGameCommand, CreateMemePackCommand,
+    CreateSituationPackCommand, DeleteMemePackCommand, DeletePackMemeCommand,
+    DeletePackSituationCommand, DeleteSituationPackCommand, JoinGameCommand, ProcessTimeoutCommand,
+    SetReadyCommand, StartGameCommand, SubmitCardCommand, UpdateGameCommand, UpdateMemePackCommand,
+    UpdateSituationPackCommand, VoteCardCommand,
 };
 
 // Re-export queries
 pub use application::queries::{
-    get_game_state::{GetGameStateQuery, GameStateResult},
-    meme_pack_queries::{ListMemePacksQuery, GetMemePackQuery, MemePackQueryResult, ListUserMemePacksQuery},
-    situation_pack_queries::{ListSituationPacksQuery, GetSituationPackQuery, SituationPackQueryResult, ListUserSituationPacksQuery},
+    get_game_state::{GameStateResult, GetGameStateQuery},
     get_ws_token::{GetWsTokenQuery, WsTokenResult},
+    meme_pack_queries::{
+        GetMemePackQuery, ListMemePacksQuery, ListUserMemePacksQuery, MemePackQueryResult,
+    },
+    situation_pack_queries::{
+        GetSituationPackQuery, ListSituationPacksQuery, ListUserSituationPacksQuery,
+        SituationPackQueryResult,
+    },
+    list_active_games::ListActiveGamesQuery,
 };
 
 // Re-export domain models & repo port
 pub use domain::{
     model::{
-        ContentSafetyLevel, LanguageCode, Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound,
-        GameStatus, PlayerSubmissionState, RoundPhase, RoundSubmission, RoundVote,
-        MemePack, PackMeme, PackMemeDetails, SituationPack, PackSituation, GamePlayerHandCardWithMedia, RawGameCard,
+        ContentSafetyLevel, Game, ActiveGame, GameCard, GameMode, GamePlayer, GamePlayerHandCard,
+        GamePlayerHandCardWithMedia, GameRound, GameStatus, LanguageCode, MemePack, PackMeme,
+        PackMemeDetails, PackSituation, PlayerSubmissionState, RawGameCard, RoundPhase,
+        RoundSubmission, RoundVote, SituationPack,
     },
     ports::game_repository::GameRepository,
 };
 
 // Re-export application ports
+pub use application::ports::game_media_manager::GameMediaManager;
 pub use application::ports::game_notification_sender::GameNotificationSender;
 pub use application::ports::game_token_generator::GameTokenGenerator;
-pub use application::ports::game_media_manager::GameMediaManager;
 
 // Re-export infrastructure adapter
 pub use infra::adapters::GameRepositoryImpl;
@@ -72,6 +78,7 @@ pub struct GameState {
     pub list_user_situation_packs: Arc<ListUserSituationPacksQuery>,
     pub get_situation_pack: Arc<GetSituationPackQuery>,
     pub get_ws_token: Arc<GetWsTokenQuery>,
+    pub list_active_games: Arc<ListActiveGamesQuery>,
     pub process_timeout: Arc<ProcessTimeoutCommand>,
     pub timer_worker: Arc<GameTimerWorker>,
     pub media_manager: Arc<dyn GameMediaManager>,
@@ -104,6 +111,7 @@ impl GameState {
         list_user_situation_packs: Arc<ListUserSituationPacksQuery>,
         get_situation_pack: Arc<GetSituationPackQuery>,
         get_ws_token: Arc<GetWsTokenQuery>,
+        list_active_games: Arc<ListActiveGamesQuery>,
         process_timeout: Arc<ProcessTimeoutCommand>,
         timer_worker: Arc<GameTimerWorker>,
         media_manager: Arc<dyn GameMediaManager>,
@@ -134,6 +142,7 @@ impl GameState {
             list_user_situation_packs,
             get_situation_pack,
             get_ws_token,
+            list_active_games,
             process_timeout,
             timer_worker,
             media_manager,

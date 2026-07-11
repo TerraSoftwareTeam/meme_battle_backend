@@ -9,7 +9,7 @@ use crate::{
     features::game::domain::{
         ports::GameRepository,
         model::{
-            Game, RawGameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
+            Game, ActiveGame, RawGameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
             PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel, LanguageCode,
             MemePack, PackMeme, SituationPack, PackSituation, GamePlayerHandCardWithMedia,
         },
@@ -42,6 +42,24 @@ impl GameRepository for GameRepositoryImpl {
         .await?;
 
         Ok(game)
+    }
+
+    async fn find_active_lobby_games(&self) -> Result<Vec<ActiveGame>, AppError> {
+        let games = sqlx::query_as::<_, ActiveGame>(
+            r#"
+            SELECT g.id, g.host_id, g.mode, g.max_rounds, g.hand_size, g.created_at,
+                   COUNT(gp.user_id)::int as players_count
+            FROM games g
+            LEFT JOIN game_players gp ON g.id = gp.game_id
+            WHERE g.status = 'lobby'
+            GROUP BY g.id
+            ORDER BY g.created_at DESC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(games)
     }
 
     async fn get_players(&self, game_id: Uuid) -> Result<Vec<GamePlayer>, AppError> {

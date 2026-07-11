@@ -137,3 +137,15 @@ impl GameAggregate {
         self.current_round >= self.max_rounds
     }
 }
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ActiveGame {
+    pub id: Uuid,
+    pub host_id: Uuid,
+    pub mode: GameMode,
+    pub max_rounds: i32,
+    pub hand_size: i32,
+    pub players_count: i32,
+    pub created_at: DateTime<Utc>,
+}
+

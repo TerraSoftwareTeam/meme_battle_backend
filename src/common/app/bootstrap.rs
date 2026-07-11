@@ -197,6 +197,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let list_user_situation_packs = Arc::new(crate::features::game::ListUserSituationPacksQuery::new(game_repository.clone()));
     let get_situation_pack = Arc::new(crate::features::game::GetSituationPackQuery::new(game_repository.clone()));
     let get_ws_token = Arc::new(crate::features::game::GetWsTokenQuery::new(game_repository.clone(), token_generator));
+    let list_active_games = Arc::new(crate::features::game::ListActiveGamesQuery::new(game_repository.clone()));
 
     let process_timeout = Arc::new(crate::features::game::ProcessTimeoutCommand::new(
         game_repository.clone(),
@@ -233,6 +234,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         list_user_situation_packs,
         get_situation_pack,
         get_ws_token,
+        list_active_games,
         process_timeout,
         timer_worker,
         game_media_manager,

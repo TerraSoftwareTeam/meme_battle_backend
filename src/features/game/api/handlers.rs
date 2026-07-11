@@ -13,7 +13,7 @@ use crate::{
     features::game::{
         api::dto::{
             CreateGameRequest, UpdateGameRequest, ReadyRequest, SubmitCardRequest, VoteRequest, GameDto,
-            GameStateDto, PlayerDto, RoundDto, CreateMemePackRequest, CreateMemePackResponse,
+            ActiveGameDto, GameStateDto, PlayerDto, RoundDto, CreateMemePackRequest, CreateMemePackResponse,
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
@@ -51,6 +51,20 @@ pub async fn create_game(
         .await?;
 
     Ok(RestApiResponse::success(GameDto::from(game)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/games",
+    responses((status = 200, description = "List active lobby games", body = Vec<ActiveGameDto>)),
+    tag = "Games"
+)]
+pub async fn list_active_games(
+    State(state): State<GameState>,
+) -> Result<impl IntoResponse, AppError> {
+    let games = state.list_active_games.execute().await?;
+    let dtos: Vec<ActiveGameDto> = games.into_iter().map(ActiveGameDto::from).collect();
+    Ok(RestApiResponse::success(dtos))
 }
 
 #[utoipa::path(
