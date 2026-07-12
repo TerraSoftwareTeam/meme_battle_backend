@@ -52,8 +52,8 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
     });
 
     // 3. Start publisher outbox processor in tests
-    let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    state
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    let processor_handle = state
         .realtime
         .processor
         .clone()
@@ -228,6 +228,10 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
         received_ready_broadcast,
         "Did not receive PlayerReadyChanged event via WebSocket"
     );
+
+    // Clean up processor
+    shutdown_tx.send(true).unwrap();
+    let _ = processor_handle.await;
 }
 
 #[tokio::test]
@@ -419,8 +423,8 @@ async fn test_lobbies_realtime_websocket_updates() {
     });
 
     // Start publisher outbox processor in tests
-    let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    state
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    let processor_handle = state
         .realtime
         .processor
         .clone()
@@ -845,6 +849,10 @@ async fn test_lobbies_realtime_websocket_updates() {
         received_removed,
         "Did not receive lobby_removed event via WebSocket"
     );
+
+    // Clean up processor
+    shutdown_tx.send(true).unwrap();
+    let _ = processor_handle.await;
 }
 
 #[tokio::test]

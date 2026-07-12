@@ -9,6 +9,7 @@ pub use application::commands::{
     auth_as_guest::AuthAsGuestCommand, login_user::LoginUserCommand,
     refresh_session::RefreshSessionCommand, register_user::RegisterUserCommand,
 };
+pub use application::queries::user_exists::UserExistsQuery;
 pub use domain::{
     model::{LoginUser, RefreshSession, RegisterUser},
     ports::auth_repository::AuthRepository,

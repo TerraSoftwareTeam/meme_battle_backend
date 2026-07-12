@@ -81,10 +81,21 @@ struct HackClubErrorResponse {
 impl FileStorage for HackClubCdnStorage {
     async fn upload(&self, file: UploadFile) -> Result<StoredFile, AppError> {
         let api_key = self.api_key()?;
+        // Normalize content_type: strip parameters like "; name=photo.jpg" that some mobile
+        // clients (e.g. Ktor on Android) append. reqwest mime_str is strict and rejects them.
+        let content_type = {
+            let raw = file.content_type.split(';').next().unwrap_or("").trim();
+            if raw.is_empty() { "application/octet-stream" } else { raw }.to_string()
+        };
+
         let part = multipart::Part::bytes(file.bytes)
             .file_name(file.filename)
-            .mime_str(&file.content_type)
-            .map_err(|err| AppError::ValidationError(format!("Invalid content type: {err}")))?;
+            .mime_str(&content_type)
+            .unwrap_or_else(|_| {
+                multipart::Part::bytes(vec![])
+                    .mime_str("application/octet-stream")
+                    .unwrap()
+            });
         let form = multipart::Form::new().part("file", part);
 
         let response = self

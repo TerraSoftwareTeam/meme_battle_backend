@@ -1,4 +1,5 @@
 use axum::extract::FromRef;
+use sqlx::PgPool;
 
 use super::config::Config;
 
@@ -16,6 +17,7 @@ pub use crate::features::game::GameState;
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
+    pub pool: PgPool,
     pub auth: AuthState,
     pub media: MediaState,
     pub user: UserState,
@@ -26,6 +28,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         config: Config,
+        pool: PgPool,
         auth: AuthState,
         media: MediaState,
         user: UserState,
@@ -34,12 +37,19 @@ impl AppState {
     ) -> Self {
         Self {
             config,
+            pool,
             auth,
             media,
             user,
             game,
             realtime,
         }
+    }
+}
+
+impl FromRef<AppState> for PgPool {
+    fn from_ref(state: &AppState) -> Self {
+        state.pool.clone()
     }
 }
 

@@ -72,9 +72,18 @@ impl IntoResponse for AppError {
             AppError::UserNotFound => StatusCode::NOT_FOUND,
             AppError::UserAlreadyExists => StatusCode::CONFLICT,
         };
+
+        let message = self.to_string();
+
+        if status.is_server_error() {
+            error!(error = %message, status = status.as_u16(), "Application error");
+        } else {
+            tracing::warn!(error = %message, status = status.as_u16(), "Client error");
+        }
+
         let body = axum::Json(ApiResponse::<()> {
             status: status.as_u16(),
-            message: self.to_string(),
+            message,
             data: None,
             request_id: crate::common::http::dto::get_current_request_id(),
         });

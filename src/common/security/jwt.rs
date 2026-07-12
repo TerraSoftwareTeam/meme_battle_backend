@@ -1,5 +1,5 @@
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -130,7 +130,11 @@ pub fn generate_random_string() -> String {
 
 /// Middleware to validate JWT tokens.
 /// If the token is valid, the request proceeds; otherwise, a 401 Unauthorized is returned.
-pub async fn jwt_auth<B>(mut req: Request<B>, next: Next) -> Result<Response, Response>
+pub async fn jwt_auth<B>(
+    State(state): State<crate::common::app::state::AppState>,
+    mut req: Request<B>,
+    next: Next,
+) -> Result<Response, Response>
 where
     B: Send + Into<axum::body::Body>,
 {
@@ -151,8 +155,25 @@ where
             AppError::InvalidToken.into_response()
         })?;
 
+    // Verify if the user still exists in the database
+    let user_id = token_data.claims.sub.clone();
+    let user_exists = state
+        .auth
+        .user_exists
+        .execute(&user_id)
+        .await
+        .map_err(|err| {
+            tracing::error!("Error checking user existence: {:?}", err);
+            AppError::InternalError.into_response()
+        })?;
+
+    if !user_exists {
+        tracing::warn!("User {} in valid JWT token no longer exists in database", user_id);
+        return Err(AppError::InvalidToken.into_response());
+    }
+
     req.extensions_mut().insert(CurrentUser {
-        user_id: token_data.claims.sub,
+        user_id,
         role: token_data.claims.role,
     });
     Ok(next.run(req.map(Into::into)).await)

@@ -12,7 +12,7 @@ use crate::common::{
 };
 use crate::features::auth::{
     AuthAsGuestCommand, AuthRepository, AuthRepositoryImpl, LoginUserCommand,
-    RefreshSessionCommand, RegisterUserCommand,
+    RefreshSessionCommand, RegisterUserCommand, UserExistsQuery,
 };
 use crate::features::media::{
     FileStorage, GetMediaAssetUrlQuery, HackClubCdnStorage, MarkMediaAttachedCommand,
@@ -63,6 +63,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         config.admin_user_ids.clone(),
     ));
     let auth_as_guest = Arc::new(AuthAsGuestCommand::new(auth_repository.clone()));
+    let user_exists = Arc::new(UserExistsQuery::new(auth_repository.clone()));
     let refresh_session = Arc::new(RefreshSessionCommand::new(
         auth_repository,
         config.admin_user_ids.clone(),
@@ -119,7 +120,13 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let max_file_size_bytes = config.max_file_size_mb as usize * 1024 * 1024;
 
     // States
-    let auth_state = AuthState::new(register_user, login_user, auth_as_guest, refresh_session);
+    let auth_state = AuthState::new(
+        register_user,
+        login_user,
+        auth_as_guest,
+        refresh_session,
+        user_exists,
+    );
     let media_state = MediaState::new(
         upload_media,
         get_media_asset_url.clone(),
@@ -247,6 +254,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
 
     let state = AppState::new(
         config,
+        pool.clone(),
         auth_state,
         media_state,
         user_state,

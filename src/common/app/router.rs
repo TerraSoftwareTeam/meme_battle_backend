@@ -64,7 +64,7 @@ pub fn create_router(state: AppState) -> Router {
         .nest("/media", media_routes())
         .nest("/games", game_routes())
         // enforce JWT authentication
-        .route_layer(middleware::from_fn(jwt::jwt_auth))
+        .route_layer(middleware::from_fn_with_state(state.clone(), jwt::jwt_auth))
         // attach inspecter
         .layer(middleware::from_fn(make_request_response_inspecter(true)));
 
@@ -121,7 +121,7 @@ pub fn create_router(state: AppState) -> Router {
         .merge(api_routes)
         .fallback(fallback)
         .layer(middleware_stack)
-        .layer(DefaultBodyLimit::max(35 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max((state.config.max_file_size_mb + 25) as usize * 1024 * 1024))
         .with_state(state)
 }
 

@@ -363,7 +363,19 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
 
     // 7. Ready Status
     // Vulnerability Fix Verification: Ready Status Leak for non-lobby players
-    let token_random = make_jwt_token(&Uuid::new_v4().to_string(), &Role::User).unwrap();
+    let (status_rand, bytes_rand) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    assert_eq!(status_rand, StatusCode::OK);
+    let auth_resp_rand: RestApiResponse<Value> = serde_json::from_slice(&bytes_rand).unwrap();
+    let token_random = auth_resp_rand
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
     let (ready_blocked_status, _) = send_request(
         &app,
         Method::POST,
