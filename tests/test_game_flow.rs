@@ -394,9 +394,9 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     };
 
     // Submissions
-    client.post(format!("{}/games/{}/rounds/{}/submit", base_url, game_id, round_id)).bearer_auth(&token1).json(&json!({ "card_id": card1_id })).send().await.unwrap();
-    client.post(format!("{}/games/{}/rounds/{}/submit", base_url, game_id, round_id)).bearer_auth(&token2).json(&json!({ "card_id": card2_id })).send().await.unwrap();
-    client.post(format!("{}/games/{}/rounds/{}/submit", base_url, game_id, round_id)).bearer_auth(&token3).json(&json!({ "card_id": card3_id })).send().await.unwrap();
+    client.post(format!("{}/games/{}/submit", base_url, game_id)).bearer_auth(&token1).json(&json!({ "card_id": card1_id })).send().await.unwrap();
+    client.post(format!("{}/games/{}/submit", base_url, game_id)).bearer_auth(&token2).json(&json!({ "card_id": card2_id })).send().await.unwrap();
+    client.post(format!("{}/games/{}/submit", base_url, game_id)).bearer_auth(&token3).json(&json!({ "card_id": card3_id })).send().await.unwrap();
 
     // Resolve submissions
     let db_subs = sqlx::query("SELECT id, user_id FROM round_submissions WHERE round_id = $1").bind(round_id).fetch_all(&pool).await.unwrap();
@@ -405,7 +405,7 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     let sub3 = db_subs.iter().find(|s| s.get::<Uuid, _>("user_id") == user_id3).unwrap().get::<Uuid, _>("id");
 
     // Anti-cheat verification: Player 1 tries to vote for their own submission (sub1)
-    let self_vote_resp = client.post(format!("{}/games/{}/rounds/{}/vote", base_url, game_id, round_id))
+    let self_vote_resp = client.post(format!("{}/games/{}/vote", base_url, game_id))
         .bearer_auth(&token1)
         .json(&json!({ "submission_id": sub1 }))
         .send()
@@ -416,9 +416,9 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     assert!(self_vote_err.0.message.contains("Cannot vote for your own submission"));
 
     // Real Votes
-    client.post(format!("{}/games/{}/rounds/{}/vote", base_url, game_id, round_id)).bearer_auth(&token1).json(&json!({ "submission_id": sub2 })).send().await.unwrap();
-    client.post(format!("{}/games/{}/rounds/{}/vote", base_url, game_id, round_id)).bearer_auth(&token2).json(&json!({ "submission_id": sub3 })).send().await.unwrap();
-    let vote_resp3 = client.post(format!("{}/games/{}/rounds/{}/vote", base_url, game_id, round_id)).bearer_auth(&token3).json(&json!({ "submission_id": sub1 })).send().await.unwrap();
+    client.post(format!("{}/games/{}/vote", base_url, game_id)).bearer_auth(&token1).json(&json!({ "submission_id": sub2 })).send().await.unwrap();
+    client.post(format!("{}/games/{}/vote", base_url, game_id)).bearer_auth(&token2).json(&json!({ "submission_id": sub3 })).send().await.unwrap();
+    let vote_resp3 = client.post(format!("{}/games/{}/vote", base_url, game_id)).bearer_auth(&token3).json(&json!({ "submission_id": sub1 })).send().await.unwrap();
     assert_eq!(vote_resp3.status(), StatusCode::OK);
 
     // Verify game status is finished
@@ -479,17 +479,17 @@ async fn test_timer_and_concurrency_edge_cases() {
     let user_id1 = Uuid::new_v4();
     let user_id2 = Uuid::new_v4();
     let user_id3 = Uuid::new_v4();
-    let handle1 = format!("handle_{}", Uuid::new_v4().simple());
-    let handle2 = format!("handle_{}", Uuid::new_v4().simple());
-    let handle3 = format!("handle_{}", Uuid::new_v4().simple());
+    let username1 = format!("user1_{}", Uuid::new_v4().simple());
+    let username2 = format!("user2_{}", Uuid::new_v4().simple());
+    let username3 = format!("user3_{}", Uuid::new_v4().simple());
     
-    sqlx::query("INSERT INTO users (id, username, handle, role) VALUES ($1, 'user1', $4, 'user'), ($2, 'user2', $5, 'user'), ($3, 'user3', $6, 'user')")
+    sqlx::query("INSERT INTO users (id, username, role) VALUES ($1, $4, 'user'), ($2, $5, 'user'), ($3, $6, 'user')")
         .bind(user_id1)
         .bind(user_id2)
         .bind(user_id3)
-        .bind(handle1)
-        .bind(handle2)
-        .bind(handle3)
+        .bind(username1)
+        .bind(username2)
+        .bind(username3)
         .execute(&pool)
         .await
         .unwrap();
@@ -568,9 +568,9 @@ async fn test_timer_and_concurrency_edge_cases() {
     let repo = GameRepositoryImpl::new(pool.clone());
 
     // 3. Create Game
-    let game = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1).await.unwrap();
-    state.game.join_game.execute(user_id2, game.id).await.unwrap();
-    state.game.join_game.execute(user_id3, game.id).await.unwrap();
+    let game = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
+    state.game.join_game.execute(user_id2, game.id, None).await.unwrap();
+    state.game.join_game.execute(user_id3, game.id, None).await.unwrap();
     state.game.set_ready.execute(user_id1, game.id, true).await.unwrap();
     state.game.set_ready.execute(user_id2, game.id, true).await.unwrap();
     state.game.set_ready.execute(user_id3, game.id, true).await.unwrap();
@@ -605,9 +605,9 @@ async fn test_timer_and_concurrency_edge_cases() {
     assert_eq!(state_after_late_call.phase, RoundPhase::Voting);
 
     // Test Case 3: Empty Hand Auto-submission skip
-    let game_empty = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1).await.unwrap();
-    state.game.join_game.execute(user_id2, game_empty.id).await.unwrap();
-    state.game.join_game.execute(user_id3, game_empty.id).await.unwrap();
+    let game_empty = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
+    state.game.join_game.execute(user_id2, game_empty.id, None).await.unwrap();
+    state.game.join_game.execute(user_id3, game_empty.id, None).await.unwrap();
     state.game.set_ready.execute(user_id1, game_empty.id, true).await.unwrap();
     state.game.set_ready.execute(user_id2, game_empty.id, true).await.unwrap();
     state.game.set_ready.execute(user_id3, game_empty.id, true).await.unwrap();
@@ -661,9 +661,9 @@ async fn test_timer_and_concurrency_edge_cases() {
     assert!(round_winner.is_none(), "Round winner should be None when there are no votes");
 
     // Test Case 5: Partial Submissions Auto-Submit
-    let game_partial = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1).await.unwrap();
-    state.game.join_game.execute(user_id2, game_partial.id).await.unwrap();
-    state.game.join_game.execute(user_id3, game_partial.id).await.unwrap();
+    let game_partial = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
+    state.game.join_game.execute(user_id2, game_partial.id, None).await.unwrap();
+    state.game.join_game.execute(user_id3, game_partial.id, None).await.unwrap();
     state.game.set_ready.execute(user_id1, game_partial.id, true).await.unwrap();
     state.game.set_ready.execute(user_id2, game_partial.id, true).await.unwrap();
     state.game.set_ready.execute(user_id3, game_partial.id, true).await.unwrap();
@@ -676,7 +676,7 @@ async fn test_timer_and_concurrency_edge_cases() {
         GameCard::Meme { id, .. } => *id,
         GameCard::Situation { id, .. } => *id,
     };
-    state.game.submit_card.execute(user_id1, game_partial.id, round_partial.id, card_id).await.unwrap();
+    state.game.submit_card.execute(user_id1, game_partial.id, card_id).await.unwrap();
 
     sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
         .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
@@ -699,9 +699,9 @@ async fn test_timer_and_concurrency_edge_cases() {
     assert_eq!(submission_count, 3, "All 3 players should have submissions (2 auto-submitted)");
 
     // Test Case 6: Concurrent Lease Claim Protection
-    let game_lease = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1).await.unwrap();
-    state.game.join_game.execute(user_id2, game_lease.id).await.unwrap();
-    state.game.join_game.execute(user_id3, game_lease.id).await.unwrap();
+    let game_lease = state.game.create_game.execute(user_id1, GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
+    state.game.join_game.execute(user_id2, game_lease.id, None).await.unwrap();
+    state.game.join_game.execute(user_id3, game_lease.id, None).await.unwrap();
     state.game.set_ready.execute(user_id1, game_lease.id, true).await.unwrap();
     state.game.set_ready.execute(user_id2, game_lease.id, true).await.unwrap();
     state.game.set_ready.execute(user_id3, game_lease.id, true).await.unwrap();

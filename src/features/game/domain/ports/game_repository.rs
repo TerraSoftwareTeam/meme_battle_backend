@@ -87,12 +87,15 @@ pub trait GameRepository: Send + Sync {
         status: GameStatus,
     ) -> Result<(), AppError>;
 
+    async fn get_user_username(&self, user_id: Uuid) -> Result<Option<String>, AppError>;
+
     async fn add_player(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
         user_id: Uuid,
         is_ready: bool,
+        nickname: String,
     ) -> Result<(), AppError>;
 
     async fn update_player_ready(
@@ -174,7 +177,11 @@ pub trait GameRepository: Send + Sync {
         phase: RoundPhase,
         phase_expires_at: Option<DateTime<Utc>>,
     ) -> Result<(), AppError>;
-
+    async fn get_round_submissions(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+    ) -> Result<Vec<RoundSubmission>, AppError>;
 
     async fn update_round_winner_and_phase(
         &self,

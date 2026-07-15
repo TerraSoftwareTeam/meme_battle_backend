@@ -23,7 +23,7 @@ impl RegisterUserCommand {
         };
 
         self.repo
-            .create_user_with_auth(input.username, input.handle, password_hash)
+            .create_user_with_auth(Some(input.username), password_hash)
             .await?;
 
         Ok(())

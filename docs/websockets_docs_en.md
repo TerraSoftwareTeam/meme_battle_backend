@@ -185,7 +185,8 @@ All event notifications sent by the server are wrapped in a Centrifugo `push` co
 ```json
 {
   "user_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
-  "players_count": 3
+  "players_count": 3,
+  "handle": "player-8f7b3b4f"
 }
 ```
 

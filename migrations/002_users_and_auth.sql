@@ -1,9 +1,7 @@
 CREATE TABLE users (
     id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    username               VARCHAR(64) NOT NULL,
-    handle                 VARCHAR(64) NOT NULL UNIQUE,
+    username               VARCHAR(64) UNIQUE,
     role                   user_role NOT NULL DEFAULT 'user',
-    avatar_media_asset_id  BIGINT,
     created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
     modified_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );

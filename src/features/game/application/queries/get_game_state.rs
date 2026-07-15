@@ -12,12 +12,20 @@ use crate::{
     },
 };
 
+pub struct GameStateSubmission {
+    pub id: Uuid,
+    pub card: GameCard,
+}
+
 pub struct GameStateResult {
     pub game: Game,
     pub round: Option<GameRound>,
     pub prompt: Option<GameCard>,
     pub players: Vec<PlayerSubmissionState>,
     pub my_hand: Vec<GameCard>,
+    pub submissions: Option<Vec<GameStateSubmission>>,
+    pub my_submission: Option<GameCard>,
+    pub has_voted: bool,
 }
 
 pub struct GetGameStateQuery {
@@ -31,6 +39,8 @@ impl GetGameStateQuery {
     }
 
     pub async fn execute(&self, user_id: Uuid, game_id: Uuid) -> Result<GameStateResult, AppError> {
+        let mut tx = self.repo.begin().await?;
+
         let game = self.repo
             .find_game(game_id)
             .await?
@@ -61,12 +71,61 @@ impl GetGameStateQuery {
             None => None,
         };
 
+        // Populate new snapshot fields
+        let mut submissions = None;
+        let mut my_submission = None;
+        let mut has_voted = false;
+
+        if let Some(round) = &current_round {
+            has_voted = self.repo.check_player_voted(&mut tx, round.id, user_id).await?;
+
+            let round_subs = self.repo.get_round_submissions(&mut tx, round.id).await?;
+
+            // Find current user's submission to display under my_submission
+            if let Some(my_sub) = round_subs.iter().find(|s| s.user_id == user_id) {
+                if let Some(meme_id) = my_sub.submission_meme_id {
+                    let media_id = self.repo.find_pack_meme_by_id(meme_id).await?.map(|m| m.media_id).flatten();
+                    my_submission = Some(self.resolve_card(RawGameCard::Meme { id: meme_id, media_id }).await?);
+                } else if let Some(sit_id) = my_sub.submission_situation_id {
+                    let prompt_text = self.repo.find_pack_situation_by_id(sit_id).await?.map(|s| s.prompt_text).unwrap_or_default();
+                    my_submission = Some(self.resolve_card(RawGameCard::Situation { id: sit_id, prompt_text }).await?);
+                }
+            }
+
+            // Populate all anonymized submissions for voting/results if in Voting/Finished phase
+            use crate::features::game::domain::model::RoundPhase;
+            if matches!(round.phase, RoundPhase::Voting | RoundPhase::Finished) {
+                let mut resolved_subs = Vec::new();
+                for sub in round_subs {
+                    let card = if let Some(meme_id) = sub.submission_meme_id {
+                        let media_id = self.repo.find_pack_meme_by_id(meme_id).await?.map(|m| m.media_id).flatten();
+                        self.resolve_card(RawGameCard::Meme { id: meme_id, media_id }).await?
+                    } else if let Some(sit_id) = sub.submission_situation_id {
+                        let prompt_text = self.repo.find_pack_situation_by_id(sit_id).await?.map(|s| s.prompt_text).unwrap_or_default();
+                        self.resolve_card(RawGameCard::Situation { id: sit_id, prompt_text }).await?
+                    } else {
+                        continue;
+                    };
+                    resolved_subs.push(GameStateSubmission {
+                        id: sub.id,
+                        card,
+                    });
+                }
+                submissions = Some(resolved_subs);
+            }
+        }
+
+        tx.commit().await?;
+
         Ok(GameStateResult {
             game,
             round: current_round,
             prompt,
             players,
             my_hand: resolved_my_hand,
+            submissions,
+            my_submission,
+            has_voted,
         })
     }
 

@@ -2,13 +2,12 @@ use std::sync::Arc;
 
 use crate::features::user::{
     GetMeQuery, GetUserByIdQuery, GetUserListQuery, GetUsersQuery, PromoteToAdminCommand,
-    UpdateMeCommand, UpdateMyAvatarCommand,
+    UpdateMeCommand,
 };
 
 #[derive(Clone)]
 pub struct UserState {
     pub update_me: Arc<UpdateMeCommand>,
-    pub update_my_avatar: Arc<UpdateMyAvatarCommand>,
     pub get_me: Arc<GetMeQuery>,
     pub get_user_by_id: Arc<GetUserByIdQuery>,
     pub get_user_list: Arc<GetUserListQuery>,
@@ -20,7 +19,6 @@ pub struct UserState {
 impl UserState {
     pub fn new(
         update_me: Arc<UpdateMeCommand>,
-        update_my_avatar: Arc<UpdateMyAvatarCommand>,
         get_me: Arc<GetMeQuery>,
         get_user_by_id: Arc<GetUserByIdQuery>,
         get_user_list: Arc<GetUserListQuery>,
@@ -30,7 +28,6 @@ impl UserState {
     ) -> Self {
         Self {
             update_me,
-            update_my_avatar,
             get_me,
             get_user_by_id,
             get_user_list,

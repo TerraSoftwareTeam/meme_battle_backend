@@ -287,13 +287,13 @@ async fn submit_card_for_player(
     base_url: &str,
     token: &str,
     game_id: Uuid,
-    round_id: Uuid,
+    _round_id: Uuid,
     card_id: Uuid,
 ) {
     let resp = client
         .post(format!(
-            "{}/games/{}/rounds/{}/submit",
-            base_url, game_id, round_id
+            "{}/games/{}/submit",
+            base_url, game_id
         ))
         .bearer_auth(token)
         .json(&SubmitCardRequest { card_id })
@@ -334,8 +334,8 @@ async fn vote_for_other_player(
 
     let resp = client
         .post(format!(
-            "{}/games/{}/rounds/{}/vote",
-            base_url, game_id, round_id
+            "{}/games/{}/vote",
+            base_url, game_id
         ))
         .bearer_auth(token)
         .json(&VoteRequest { submission_id })
@@ -506,6 +506,7 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             selected_meme_pack_ids: vec![meme_pack_id],
             max_rounds: 2,
             hand_size: 2,
+            handle: None,
         })
         .send()
         .await
@@ -745,8 +746,8 @@ async fn test_real_game_centrifugo_gameplay_flow() {
     // Try to submit an invalid card (not in hand) -> should fail with BAD_REQUEST (400)
     let invalid_card_resp = client
         .post(format!(
-            "{}/games/{}/rounds/{}/submit",
-            base_url, game_id, round1_id
+            "{}/games/{}/submit",
+            base_url, game_id
         ))
         .bearer_auth(&tokens[0])
         .json(&SubmitCardRequest {
@@ -830,8 +831,8 @@ async fn test_real_game_centrifugo_gameplay_flow() {
     // Try to submit another card in the voting phase -> should fail with CONFLICT (409)
     let late_submit_resp = client
         .post(format!(
-            "{}/games/{}/rounds/{}/submit",
-            base_url, game_id, round1_id
+            "{}/games/{}/submit",
+            base_url, game_id
         ))
         .bearer_auth(&tokens[0])
         .json(&SubmitCardRequest {
@@ -861,8 +862,8 @@ async fn test_real_game_centrifugo_gameplay_flow() {
 
     let own_vote_resp = client
         .post(format!(
-            "{}/games/{}/rounds/{}/vote",
-            base_url, game_id, round1_id
+            "{}/games/{}/vote",
+            base_url, game_id
         ))
         .bearer_auth(&tokens[0])
         .json(&VoteRequest {
@@ -885,8 +886,8 @@ async fn test_real_game_centrifugo_gameplay_flow() {
 
     let vote_resp = client
         .post(format!(
-            "{}/games/{}/rounds/{}/vote",
-            base_url, game_id, round1_id
+            "{}/games/{}/vote",
+            base_url, game_id
         ))
         .bearer_auth(&tokens[0])
         .json(&VoteRequest {
@@ -900,8 +901,8 @@ async fn test_real_game_centrifugo_gameplay_flow() {
     // Try to vote twice -> should fail with CONFLICT (409)
     let double_vote_resp = client
         .post(format!(
-            "{}/games/{}/rounds/{}/vote",
-            base_url, game_id, round1_id
+            "{}/games/{}/vote",
+            base_url, game_id
         ))
         .bearer_auth(&tokens[0])
         .json(&VoteRequest {

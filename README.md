@@ -1,4 +1,4 @@
-# Meme Battle Backend
+# Meme Battle Backend 
 
 Backend service for the **Meme Battle** game written in Rust. It utilizes Axum, PostgreSQL (via SQLx), and Centrifugo for real-time WebSocket communication.
 

@@ -2,22 +2,19 @@ use std::sync::Arc;
 
 use crate::{
     common::http::error::AppError,
-    features::user::{MediaAssetResolver, UserProfile, UserRepository},
+    features::user::{UserProfile, UserRepository},
 };
 
 pub struct GetMeQuery {
     repo: Arc<dyn UserRepository>,
-    media_asset_resolver: Arc<dyn MediaAssetResolver>,
 }
 
 impl GetMeQuery {
     pub fn new(
         repo: Arc<dyn UserRepository>,
-        media_asset_resolver: Arc<dyn MediaAssetResolver>,
     ) -> Self {
         Self {
             repo,
-            media_asset_resolver,
         }
     }
 
@@ -28,6 +25,6 @@ impl GetMeQuery {
             .await?
             .ok_or_else(|| AppError::NotFound("User not found".into()))?;
 
-        UserProfile::resolve(user, self.media_asset_resolver.as_ref()).await
+        UserProfile::resolve(user).await
     }
 }

@@ -43,9 +43,14 @@ impl VoteCardCommand {
         &self,
         user_id: Uuid,
         game_id: Uuid,
-        round_id: Uuid,
         submission_id: Uuid,
     ) -> Result<(), AppError> {
+        let current_round = self.repo
+            .get_current_round(game_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("No active round found for this game".to_string()))?;
+        let round_id = current_round.id;
+
         // ── Phase 1: Load & validate (outside transaction for cheaper reads) ──
 
         // 1a. Fetch aggregate with all fields we need for state decisions

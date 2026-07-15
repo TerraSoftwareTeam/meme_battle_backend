@@ -7,14 +7,8 @@ mod infra;
 pub use api::routes::{user_routes, UserAdminApiDoc, UserApiDoc};
 pub use application::commands::{
     promote_to_admin::PromoteToAdminCommand, update_me::UpdateMeCommand,
-    update_my_avatar::UpdateMyAvatarCommand,
 };
-pub use application::models::{
-    avatar_upload::{AvatarUploadFile, UploadedAvatar},
-    user_profile::UserProfile,
-};
-pub use application::ports::avatar_media_uploader::AvatarMediaUploader;
-pub use application::ports::media_asset_resolver::MediaAssetResolver;
+pub use application::models::user_profile::UserProfile;
 pub use application::queries::{
     get_me::GetMeQuery, get_user_by_id::GetUserByIdQuery, get_user_list::GetUserListQuery,
     get_users::GetUsersQuery,

@@ -10,12 +10,11 @@ use crate::{
 pub trait AuthRepository: Send + Sync {
     async fn create_user_with_auth(
         &self,
-        username: String,
-        handle: String,
+        username: Option<String>,
         password_hash: Option<String>,
     ) -> Result<String, AppError>;
 
-    async fn find_by_handle(&self, handle: &str) -> Result<Option<UserAuth>, AppError>;
+    async fn find_by_username(&self, username: &str) -> Result<Option<UserAuth>, AppError>;
 
     async fn find_by_id(&self, user_id: &str) -> Result<Option<UserAuth>, AppError>;
 
@@ -35,4 +34,10 @@ pub trait AuthRepository: Send + Sync {
     async fn mark_token_as_used(&self, token_hash: &str) -> Result<(), AppError>;
 
     async fn revoke_token_family(&self, family_id: uuid::Uuid) -> Result<(), AppError>;
+
+    async fn update_password_hash(
+        &self,
+        user_id: &str,
+        password_hash: String,
+    ) -> Result<(), AppError>;
 }

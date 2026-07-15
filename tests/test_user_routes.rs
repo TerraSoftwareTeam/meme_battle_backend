@@ -1,154 +1,132 @@
-// use axum::http::{Method, StatusCode};
+use axum::http::StatusCode;
+use serde_json::{json, Value};
+use sqlx::postgres::PgPoolOptions;
+use uuid::Uuid;
+use meme_battle_backend::{
+    app::create_router,
+    common::{
+        app::{
+            bootstrap::{build_app_state, run_database_migrations},
+            config::Config,
+        },
+        http::dto::RestApiResponse,
+    },
+};
 
-// use meme_battle_backend::{
-//     common::{http::dto::RestApiResponse, http::error::AppError},
-//     domains::user::dto::user_dto::{CreateUserDto, SearchUserDto, UpdateUserDto, UserDto},
-// };
+#[tokio::test]
+async fn test_user_routes_lifecycle() {
+    dotenvy::dotenv().ok();
+    let _ = tracing_subscriber::fmt::try_init();
 
-// mod test_helpers;
+    // 1. Load configuration and connect to the test DB
+    let config = Config::from_env().unwrap();
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .min_connections(1)
+        .connect(&config.database_url)
+        .await
+        .unwrap();
+    run_database_migrations(&pool).await.unwrap();
 
-// use test_helpers::{deserialize_json_body, request_with_auth, request_with_auth_and_body};
+    // 2. Start the application router on an ephemeral port
+    let app_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let app_addr = app_listener.local_addr().unwrap();
+    let state = build_app_state(pool.clone(), config);
+    let app = create_router(state);
+    tokio::spawn(async move {
+        axum::serve(app_listener, app).await.unwrap();
+    });
 
-// async fn create_user() -> Result<(CreateUserDto, UserDto), AppError> {
-//     let username = format!("testuser-{}", uuid::Uuid::new_v4());
-//     let handle = format!("handle-{}", uuid::Uuid::new_v4());
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}", app_addr);
 
-//     let payload = CreateUserDto { username, handle };
+    // Register a test user
+    let username1 = format!("u1-{}", Uuid::new_v4());
+    let resp1 = client.post(format!("{}/auth/register", base_url))
+        .json(&json!({
+            "username": username1,
+            "password": "password123"
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp1.status(), StatusCode::OK);
 
-//     let response = request_with_auth_and_body(Method::POST, "/user", &payload);
-//     let (parts, body) = response.await.into_parts();
+    // Login to get access token
+    let login_resp = client.post(format!("{}/auth/login", base_url))
+        .json(&json!({
+            "username": username1,
+            "password": "password123"
+        }))
+        .send().await.unwrap();
+    assert_eq!(login_resp.status(), StatusCode::OK);
+    let login_body: RestApiResponse<Value> = login_resp.json().await.unwrap();
+    let access_token1 = login_body.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
 
-//     assert_eq!(parts.status, StatusCode::OK);
+    // --- 1. Test GET /user/me ---
+    let me_resp = client.get(format!("{}/user/me", base_url))
+        .bearer_auth(&access_token1)
+        .send().await.unwrap();
+    assert_eq!(me_resp.status(), StatusCode::OK);
+    let me_body: RestApiResponse<Value> = me_resp.json().await.unwrap();
+    let me_data = me_body.0.data.unwrap();
+    let user_id1 = me_data.get("id").unwrap().as_str().unwrap().to_string();
+    assert_eq!(me_data.get("username").unwrap().as_str().unwrap(), username1);
 
-//     let response_body: RestApiResponse<UserDto> = deserialize_json_body(body).await.unwrap();
+    // --- 2. Test PATCH /user/me ---
+    let updated_username = format!("u1-new-{}", Uuid::new_v4());
+    let patch_resp = client.patch(format!("{}/user/me", base_url))
+        .bearer_auth(&access_token1)
+        .json(&json!({
+            "username": updated_username
+        }))
+        .send().await.unwrap();
+    assert_eq!(patch_resp.status(), StatusCode::OK);
+    let patch_body: RestApiResponse<Value> = patch_resp.json().await.unwrap();
+    assert_eq!(patch_body.0.data.unwrap().get("username").unwrap().as_str().unwrap(), updated_username);
 
-//     assert_eq!(response_body.0.status, StatusCode::OK);
-//     let user_dto = response_body.0.data.unwrap();
+    // --- 3. Test GET /user/{id} ---
+    let get_by_id_resp = client.get(format!("{}/user/{}", base_url, user_id1))
+        .bearer_auth(&access_token1)
+        .send().await.unwrap();
+    assert_eq!(get_by_id_resp.status(), StatusCode::OK);
+    let get_by_id_body: RestApiResponse<Value> = get_by_id_resp.json().await.unwrap();
+    assert_eq!(get_by_id_body.0.data.unwrap().get("username").unwrap().as_str().unwrap(), updated_username);
 
-//     Ok((payload, user_dto))
-// }
+    // --- 4. Test POST /user/{id}/promote-admin ---
+    // Register another user to promote
+    let username2 = format!("u2-{}", Uuid::new_v4());
+    let resp2 = client.post(format!("{}/auth/register", base_url))
+        .json(&json!({
+            "username": username2,
+            "password": "password123"
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp2.status(), StatusCode::OK);
 
-// #[tokio::test]
-// async fn test_create_user() {
-//     let created = create_user().await.expect("Failed to create user");
+    // Login user 2 to get their ID
+    let login_resp2 = client.post(format!("{}/auth/login", base_url))
+        .json(&json!({
+            "username": username2,
+            "password": "password123"
+        }))
+        .send().await.unwrap();
+    let login_body2: RestApiResponse<Value> = login_resp2.json().await.unwrap();
+    let access_token2 = login_body2.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
 
-//     let payload = created.0;
-//     let user_dto = created.1;
+    let me_resp2 = client.get(format!("{}/user/me", base_url))
+        .bearer_auth(&access_token2)
+        .send().await.unwrap();
+    let me_body2: RestApiResponse<Value> = me_resp2.json().await.unwrap();
+    let user_id2 = me_body2.0.data.unwrap().get("id").unwrap().as_str().unwrap().to_string();
 
-//     assert!(!user_dto.id.is_empty());
-//     assert_eq!(user_dto.username, payload.username);
-//     assert_eq!(user_dto.handle, payload.handle);
-// }
+    // Promote user 2 using user 1's token (promote-admin is currently unrestricted by role)
+    let promote_resp = client.post(format!("{}/user/{}/promote-admin", base_url, user_id2))
+        .bearer_auth(&access_token1)
+        .send().await.unwrap();
+    assert_eq!(promote_resp.status(), StatusCode::OK);
 
-// #[tokio::test]
-// async fn test_get_users() {
-//     let response = request_with_auth(Method::GET, "/user");
-//     let (parts, body) = response.await.into_parts();
-
-//     assert_eq!(parts.status, StatusCode::OK);
-
-//     let response_body: RestApiResponse<Vec<UserDto>> = deserialize_json_body(body).await.unwrap();
-
-//     assert_eq!(response_body.0.status, StatusCode::OK);
-//     assert!(!response_body.0.data.unwrap().is_empty());
-// }
-
-// #[tokio::test]
-// async fn test_get_user_list() {
-//     let payload = SearchUserDto {
-//         username: Some("User".to_string()),
-//         id: None,
-//         handle: None,
-//     };
-
-//     let response = request_with_auth_and_body(Method::POST, "/user/list", &payload);
-//     let (parts, body) = response.await.into_parts();
-
-//     assert_eq!(parts.status, StatusCode::OK);
-
-//     let response_body: RestApiResponse<Vec<UserDto>> = deserialize_json_body(body).await.unwrap();
-
-//     assert_eq!(response_body.0.status, StatusCode::OK);
-//     assert!(!response_body.0.data.unwrap().is_empty());
-// }
-
-// #[tokio::test]
-// async fn test_get_user_by_id() {
-//     let created = create_user().await.expect("Failed to create user");
-
-//     let existent_user = created.1;
-//     let existent_id = existent_user.id.clone();
-
-//     let url = format!("/user/{}", existent_id);
-//     let response = request_with_auth(Method::GET, url.as_str());
-//     let (parts, body) = response.await.into_parts();
-
-//     assert_eq!(parts.status, StatusCode::OK);
-
-//     let response_body: RestApiResponse<UserDto> = deserialize_json_body(body).await.unwrap();
-
-//     assert_eq!(response_body.0.status, StatusCode::OK);
-//     let user_dto = response_body.0.data.unwrap();
-
-//     assert_eq!(user_dto.id, existent_id);
-//     assert_eq!(user_dto.username, existent_user.username);
-//     assert_eq!(user_dto.handle, existent_user.handle);
-//     assert_eq!(user_dto.created_at, existent_user.created_at);
-//     assert_eq!(user_dto.modified_at, existent_user.modified_at);
-// }
-
-// #[tokio::test]
-// async fn test_update_user() {
-//     let created = create_user().await.expect("Failed to create user");
-
-//     let existent_id = created.1.id;
-//     let username = format!("update-testuser-{}", uuid::Uuid::new_v4());
-//     let handle = format!("update-handle-{}", uuid::Uuid::new_v4());
-
-//     let payload = UpdateUserDto { username, handle };
-
-//     let url = format!("/user/{}", existent_id);
-//     let response = request_with_auth_and_body(Method::PUT, url.as_str(), &payload);
-//     let (parts, body) = response.await.into_parts();
-
-//     assert_eq!(parts.status, StatusCode::OK);
-
-//     let response_body: RestApiResponse<UserDto> = deserialize_json_body(body).await.unwrap();
-
-//     assert_eq!(response_body.0.status, StatusCode::OK);
-//     let user_dto = response_body.0.data.unwrap();
-
-//     assert_eq!(user_dto.id, existent_id);
-//     assert_eq!(user_dto.username, payload.username);
-//     assert_eq!(user_dto.handle, payload.handle);
-// }
-
-// #[tokio::test]
-// async fn test_delete_user_not_found() {
-//     let non_existent_id = uuid::Uuid::new_v4();
-
-//     let url = format!("/user/{}", non_existent_id);
-//     let response = request_with_auth(Method::DELETE, url.as_str());
-//     let (parts, body) = response.await.into_parts();
-
-//     assert_eq!(parts.status, StatusCode::NOT_FOUND);
-
-//     let response_body: RestApiResponse<()> = deserialize_json_body(body).await.unwrap();
-//     assert_eq!(response_body.0.status, StatusCode::NOT_FOUND);
-// }
-
-// #[tokio::test]
-// async fn test_delete_user() {
-//     let created = create_user()
-//         .await
-//         .expect("Failed to create user for deletion");
-
-//     let url = format!("/user/{}", created.1.id);
-//     let response = request_with_auth(Method::DELETE, url.as_str());
-//     let (parts, body) = response.await.into_parts();
-
-//     assert_eq!(parts.status, StatusCode::OK);
-
-//     let response_body: RestApiResponse<()> = deserialize_json_body(body).await.unwrap();
-//     assert_eq!(response_body.0.status, StatusCode::OK);
-// }
+    // Verify user 2's role is now admin in DB
+    let role: String = sqlx::query_scalar("SELECT role::text FROM users WHERE id = $1::uuid")
+        .bind(&user_id2)
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(role, "admin");
+}

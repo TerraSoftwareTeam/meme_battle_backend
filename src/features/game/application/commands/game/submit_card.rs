@@ -26,9 +26,14 @@ impl SubmitCardCommand {
         &self,
         user_id: Uuid,
         game_id: Uuid,
-        round_id: Uuid,
         card_id: Uuid,
     ) -> Result<(), AppError> {
+        let current_round = self.repo
+            .get_current_round(game_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("No active round found for this game".to_string()))?;
+        let round_id = current_round.id;
+
         let mut tx = self.repo.begin().await?;
 
         // 1. Lock Game

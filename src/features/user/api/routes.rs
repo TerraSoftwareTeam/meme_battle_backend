@@ -1,10 +1,7 @@
 use super::handlers::*;
 use crate::{
     common::app::state::AppState,
-    features::user::api::dto::{
-        request::{SearchUserDto, UpdateMeDto, UploadAvatarRequestDto},
-        response::UserDto,
-    },
+    features::user::api::dto::{request::UpdateMeDto, response::UserDto},
 };
 
 use axum::{
@@ -22,14 +19,11 @@ use utoipa::{
     paths(
         get_me,
         update_me,
-        update_my_avatar,
         get_user_by_id,
-        get_users,
-        get_user_list,
     ),
-    components(schemas(UserDto, SearchUserDto, UpdateMeDto, UploadAvatarRequestDto)),
+    components(schemas(UserDto, UpdateMeDto)),
     tags(
-        (name = "Users", description = "User management endpoints"),
+        (name = "Users", description = "Users endpoints"),
         (name = "Me", description = "Current user profile endpoints")
     ),
     security(
@@ -89,9 +83,6 @@ impl utoipa::Modify for UserAdminApiDoc {
 pub fn user_routes() -> Router<AppState> {
     Router::new()
         .route("/me", get(get_me).patch(update_me))
-        .route("/me/avatar", axum::routing::put(update_my_avatar))
-        .route("/", get(get_users))
-        .route("/list", post(get_user_list))
         .route("/{id}", get(get_user_by_id))
         .route("/{id}/promote-admin", post(promote_to_admin))
 }

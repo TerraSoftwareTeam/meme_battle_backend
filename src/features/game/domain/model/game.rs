@@ -48,6 +48,7 @@ pub struct GamePlayer {
     pub user_id: Uuid,
     pub score: i32,
     pub is_ready: bool,
+    pub handle: String,
     pub joined_at: DateTime<Utc>,
 }
 

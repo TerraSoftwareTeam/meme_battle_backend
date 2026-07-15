@@ -24,6 +24,9 @@ pub struct CreateGameRequest {
     pub max_rounds: i32,
     #[serde(default = "default_hand_size")]
     pub hand_size: i32,
+    #[serde(default)]
+    #[schema(nullable, example = json!(null))]
+    pub handle: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
@@ -98,4 +101,11 @@ pub struct UpdateSituationPackRequest {
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct AddSituationsToPackRequest {
     pub prompts: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
+pub struct JoinGameRequest {
+    #[serde(default)]
+    #[schema(nullable, example = json!(null))]
+    pub handle: Option<String>,
 }

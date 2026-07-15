@@ -217,13 +217,17 @@ impl StartGameCommand {
                     "rounds_count": game.max_rounds,
                     "hand_size": game.hand_size,
                     "current_round_number": 1,
-                    "phase": "submitting"
+                    "phase": "submitting",
+                    "players": players.iter().map(|p| serde_json::json!({
+                        "player_id": p.user_id,
+                        "handle": p.handle
+                    })).collect::<Vec<_>>()
                 }),
             )
             .await?;
 
         self.notification_sender
-            .notify_game_started(&mut tx, game_id, game.max_rounds, game.hand_size, new_version)
+            .notify_game_started(&mut tx, game_id, game.max_rounds, game.hand_size, players.clone(), new_version)
             .await?;
 
         self.notification_sender

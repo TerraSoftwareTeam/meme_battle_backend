@@ -3,7 +3,6 @@ use std::time::Instant;
 
 use sqlx::{migrate::MigrateError, PgPool};
 
-use crate::common::app::adapters::MediaAssetToUserAvatarAdapter;
 use crate::common::{
     app::{
         config::Config,
@@ -11,7 +10,7 @@ use crate::common::{
     },
 };
 use crate::features::auth::{
-    AuthAsGuestCommand, AuthRepository, AuthRepositoryImpl, LoginUserCommand,
+    AuthAsGuestCommand, AuthRepository, AuthRepositoryImpl, ChangePasswordCommand, LoginUserCommand,
     RefreshSessionCommand, RegisterUserCommand, UserExistsQuery,
 };
 use crate::features::media::{
@@ -19,8 +18,8 @@ use crate::features::media::{
     MediaRepository, PostgresMediaRepository, UploadMediaCommand,
 };
 use crate::features::user::{
-    AvatarMediaUploader, GetMeQuery, GetUserByIdQuery, GetUserListQuery, GetUsersQuery,
-    MediaAssetResolver, PromoteToAdminCommand, UpdateMeCommand, UpdateMyAvatarCommand,
+    GetMeQuery, GetUserByIdQuery, GetUserListQuery, GetUsersQuery,
+    PromoteToAdminCommand, UpdateMeCommand,
     UserRepository, UserRepositoryImpl,
 };
 
@@ -64,6 +63,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     ));
     let auth_as_guest = Arc::new(AuthAsGuestCommand::new(auth_repository.clone()));
     let user_exists = Arc::new(UserExistsQuery::new(auth_repository.clone()));
+    let change_password = Arc::new(ChangePasswordCommand::new(auth_repository.clone()));
     let refresh_session = Arc::new(RefreshSessionCommand::new(
         auth_repository,
         config.admin_user_ids.clone(),
@@ -82,38 +82,22 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     ));
     let get_media_asset_url = Arc::new(GetMediaAssetUrlQuery::new(media_repository.clone()));
     let mark_media_attached = Arc::new(MarkMediaAttachedCommand::new(media_repository.clone()));
-    let user_media_adapter = Arc::new(MediaAssetToUserAvatarAdapter::new(
-        get_media_asset_url.clone(),
-        upload_media.clone(),
-    ));
-    let media_asset_resolver: Arc<dyn MediaAssetResolver> = user_media_adapter.clone();
-    let avatar_media_uploader: Arc<dyn AvatarMediaUploader> = user_media_adapter;
-
     // User
     let user_repository: Arc<dyn UserRepository> = Arc::new(UserRepositoryImpl::new(pool.clone()));
     let update_me = Arc::new(UpdateMeCommand::new(
         user_repository.clone(),
-        media_asset_resolver.clone(),
-    ));
-    let update_my_avatar = Arc::new(UpdateMyAvatarCommand::new(
-        user_repository.clone(),
-        avatar_media_uploader,
     ));
     let get_me = Arc::new(GetMeQuery::new(
         user_repository.clone(),
-        media_asset_resolver.clone(),
     ));
     let get_user_by_id = Arc::new(GetUserByIdQuery::new(
         user_repository.clone(),
-        media_asset_resolver.clone(),
     ));
     let get_user_list = Arc::new(GetUserListQuery::new(
         user_repository.clone(),
-        media_asset_resolver.clone(),
     ));
     let get_users = Arc::new(GetUsersQuery::new(
         user_repository.clone(),
-        media_asset_resolver,
     ));
     let promote_to_admin = Arc::new(PromoteToAdminCommand::new(user_repository));
 
@@ -126,6 +110,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         auth_as_guest,
         refresh_session,
         user_exists,
+        change_password,
     );
     let media_state = MediaState::new(
         upload_media,
@@ -135,7 +120,6 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     );
     let user_state = UserState::new(
         update_me,
-        update_my_avatar,
         get_me,
         get_user_by_id,
         get_user_list,

@@ -358,6 +358,7 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
             selected_meme_pack_ids: vec![meme_pack_id],
             max_rounds: 1,
             hand_size: 1,
+            handle: None,
         })
         .send()
         .await
@@ -544,8 +545,6 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
         .get("subscribe")
         .expect("Missing subscribe field in reply");
 
-    println!("DEBUG: sub_result = {:?}", sub_result);
-
     // Verify recovery was successful
     let recovered = sub_result
         .get("recovered")
@@ -596,10 +595,5 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
             "round_started"
         ],
         "Missed publications order/types do not match"
-    );
-
-    println!(
-        "Success! All missed events were successfully recovered: {:?}",
-        event_types
     );
 }

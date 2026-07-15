@@ -62,12 +62,23 @@ pub struct LobbiesWsTokenDto {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
+pub struct RoundSubmissionDto {
+    pub id: Uuid,
+    pub card: GameCard,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct RoundDto {
     pub id: Uuid,
     pub round_number: i32,
     pub phase: RoundPhase,
     pub prompt: Option<GameCard>,
     pub phase_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submissions: Option<Vec<RoundSubmissionDto>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub my_submission: Option<GameCard>,
+    pub has_voted: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
@@ -75,6 +86,7 @@ pub struct PlayerDto {
     pub user_id: Uuid,
     pub score: i32,
     pub is_ready: bool,
+    pub handle: String,
     pub has_submitted: bool,
 }
 
@@ -84,6 +96,7 @@ impl From<PlayerSubmissionState> for PlayerDto {
             user_id: p.user_id,
             score: p.score,
             is_ready: p.is_ready,
+            handle: p.handle,
             has_submitted: p.has_submitted,
         }
     }

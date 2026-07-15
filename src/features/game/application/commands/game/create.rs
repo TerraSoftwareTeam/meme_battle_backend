@@ -37,7 +37,22 @@ impl CreateGameCommand {
         meme_pack_ids: Vec<Uuid>,
         max_rounds: i32,
         hand_size: i32,
+        requested_handle: Option<String>,
     ) -> Result<Game, AppError> {
+        // Validate situation pack IDs exist
+        for &pack_id in &situation_pack_ids {
+            if self.repo.find_situation_pack(pack_id).await?.is_none() {
+                return Err(AppError::NotFound(format!("Situation pack not found: {}", pack_id)));
+            }
+        }
+
+        // Validate meme pack IDs exist
+        for &pack_id in &meme_pack_ids {
+            if self.repo.find_meme_pack(pack_id).await?.is_none() {
+                return Err(AppError::NotFound(format!("Meme pack not found: {}", pack_id)));
+            }
+        }
+
         let mut tx = self.repo.begin().await?;
 
         // 1. Create Game
@@ -56,7 +71,15 @@ impl CreateGameCommand {
         }
 
         // 3. Add Host as Player (default ready since they are starting)
-        self.repo.add_player(&mut tx, game.id, creator_id, true).await?;
+        let username = self.repo.get_user_username(creator_id).await?;
+        let user_nickname = username.unwrap_or_else(|| format!("player-{}", creator_id));
+        let host_handle = super::resolve_handle(
+            creator_id,
+            requested_handle,
+            user_nickname,
+            &[],
+        )?;
+        self.repo.add_player(&mut tx, game.id, creator_id, true, host_handle).await?;
 
         // 4. Insert GameCreated event in event store
         self.repo.insert_game_event(

@@ -2,22 +2,19 @@ use std::sync::Arc;
 
 use crate::{
     common::http::error::AppError,
-    features::user::{MediaAssetResolver, UpdateUserProfile, UserProfile, UserRepository},
+    features::user::{UpdateUserProfile, UserProfile, UserRepository},
 };
 
 pub struct UpdateMeCommand {
     repo: Arc<dyn UserRepository>,
-    media_asset_resolver: Arc<dyn MediaAssetResolver>,
 }
 
 impl UpdateMeCommand {
     pub fn new(
         repo: Arc<dyn UserRepository>,
-        media_asset_resolver: Arc<dyn MediaAssetResolver>,
     ) -> Self {
         Self {
             repo,
-            media_asset_resolver,
         }
     }
 
@@ -33,21 +30,20 @@ impl UpdateMeCommand {
             .await?
             .ok_or_else(|| AppError::NotFound("User not found".into()))?;
 
-        UserProfile::resolve(user, self.media_asset_resolver.as_ref()).await
+        UserProfile::resolve(user).await
     }
 }
 
 fn normalize_update(update: UpdateUserProfile) -> Result<UpdateUserProfile, AppError> {
     let username = normalize_optional_field(update.username);
-    let handle = normalize_optional_field(update.handle);
 
-    if username.is_none() && handle.is_none() {
+    if username.is_none() {
         return Err(AppError::ValidationError(
-            "At least one profile field must be provided".into(),
+            "Username must be provided".into(),
         ));
     }
 
-    Ok(UpdateUserProfile { username, handle })
+    Ok(UpdateUserProfile { username })
 }
 
 fn normalize_optional_field(value: Option<String>) -> Option<String> {
