@@ -66,6 +66,7 @@ pub struct HandCardDto {
 pub struct PlayerJoinedPayload {
     pub user_id: Uuid,
     pub players_count: i32,
+    pub handle: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,10 +90,17 @@ pub struct VoteReceivedPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GamePlayerHandleInfo {
+    pub player_id: Uuid,
+    pub handle: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameStartedPayload {
     pub rounds_count: i32,
     pub hand_size: i32,
     pub current_round_number: i32,
+    pub players: Vec<GamePlayerHandleInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

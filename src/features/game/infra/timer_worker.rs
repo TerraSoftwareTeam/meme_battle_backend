@@ -162,7 +162,8 @@ mod tests {
         async fn find_game_for_update(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<Option<Game>, AppError> { todo!() }
         async fn increment_game_version(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<i64, AppError> { todo!() }
         async fn update_game_status(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _status: GameStatus) -> Result<(), AppError> { todo!() }
-        async fn add_player(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _is_ready: bool) -> Result<(), AppError> { todo!() }
+        async fn get_user_username(&self, _user_id: Uuid) -> Result<Option<String>, AppError> { todo!() }
+        async fn add_player(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _is_ready: bool, _handle: String) -> Result<(), AppError> { todo!() }
         async fn update_player_ready(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _is_ready: bool) -> Result<(), AppError> { todo!() }
         async fn get_round_for_update(&self, _tx: &mut Transaction<'_, Postgres>, _round_id: Uuid) -> Result<Option<GameRound>, AppError> { todo!() }
         async fn insert_round(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _round_number: i32, _prompt_situation_id: Option<Uuid>, _prompt_meme_id: Option<Uuid>, _phase: RoundPhase, _phase_expires_at: Option<DateTime<Utc>>) -> Result<GameRound, AppError> { todo!() }
@@ -171,6 +172,7 @@ mod tests {
         async fn mark_card_used(&self, _tx: &mut Transaction<'_, Postgres>, _hand_card_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn insert_hand_card(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _meme_id: Option<Uuid>, _situation_id: Option<Uuid>) -> Result<(), AppError> { todo!() }
         async fn insert_submission(&self, _tx: &mut Transaction<'_, Postgres>, _round_id: Uuid, _user_id: Uuid, _meme_id: Option<Uuid>, _situation_id: Option<Uuid>) -> Result<(), AppError> { todo!() }
+        async fn get_round_submissions(&self, _tx: &mut Transaction<'_, Postgres>, _round_id: Uuid) -> Result<Vec<RoundSubmission>, AppError> { todo!() }
         async fn get_submissions_count(&self, _tx: &mut Transaction<'_, Postgres>, _round_id: Uuid) -> Result<i64, AppError> { todo!() }
         async fn update_round_phase(&self, _tx: &mut Transaction<'_, Postgres>, _round_id: Uuid, _phase: RoundPhase, _phase_expires_at: Option<DateTime<Utc>>) -> Result<(), AppError> { todo!() }
         async fn update_round_winner_and_phase(&self, _tx: &mut Transaction<'_, Postgres>, _round_id: Uuid, _winner_user_id: Option<Uuid>, _phase: RoundPhase) -> Result<(), AppError> { todo!() }
@@ -223,9 +225,9 @@ mod tests {
 
     #[async_trait]
     impl GameNotificationSender for MockGameNotificationSender {
-        async fn notify_player_joined(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _players_count: i32, _version: i64) -> Result<(), AppError> { todo!() }
+        async fn notify_player_joined(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _handle: String, _players_count: i32, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_player_ready_changed(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _is_ready: bool, _version: i64) -> Result<(), AppError> { todo!() }
-        async fn notify_game_started(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _rounds_count: i32, _hand_size: i32, _version: i64) -> Result<(), AppError> { todo!() }
+        async fn notify_game_started(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _rounds_count: i32, _hand_size: i32, _players: Vec<crate::features::game::GamePlayer>, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_round_started(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _round_id: Uuid, _round_number: i32, _prompt_kind: String, _prompt_media_id: Option<i64>, _prompt_text: Option<String>, _phase_expires_at: DateTime<Utc>, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_hand_updated(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _round_id: Uuid, _cards: Vec<crate::features::game::GamePlayerHandCardWithMedia>, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_submission_received(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _round_id: Uuid, _user_id: Uuid, _version: i64) -> Result<(), AppError> { todo!() }

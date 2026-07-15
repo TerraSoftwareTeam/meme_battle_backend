@@ -45,11 +45,12 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
         user_id: Uuid,
+        handle: String,
         players_count: i32,
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
-        let payload = RealtimePayload::PlayerJoined(PlayerJoinedPayload { user_id, players_count });
+        let payload = RealtimePayload::PlayerJoined(PlayerJoinedPayload { user_id, players_count, handle });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }
 
@@ -72,6 +73,7 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         game_id: Uuid,
         rounds_count: i32,
         hand_size: i32,
+        players: Vec<crate::features::game::GamePlayer>,
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
@@ -79,6 +81,10 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             rounds_count,
             hand_size,
             current_round_number: 1,
+            players: players.into_iter().map(|p| crate::features::realtime::model::GamePlayerHandleInfo {
+                player_id: p.user_id,
+                handle: p.handle,
+            }).collect(),
         });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }

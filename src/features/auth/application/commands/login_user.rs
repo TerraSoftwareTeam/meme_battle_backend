@@ -27,13 +27,13 @@ impl LoginUserCommand {
         let password = input.password.as_deref();
         let has_valid_password = password.is_some_and(|value| !value.is_empty());
 
-        if input.handle.is_empty() || !has_valid_password {
+        if input.username.is_empty() || !has_valid_password {
             return Err(AppError::MissingCredentials);
         }
 
         let mut user_auth = self
             .repo
-            .find_by_handle(&input.handle)
+            .find_by_username(&input.username)
             .await?
             .ok_or(AppError::UserNotFound)?;
 

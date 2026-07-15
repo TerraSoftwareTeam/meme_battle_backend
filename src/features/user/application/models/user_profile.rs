@@ -2,15 +2,13 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     common::http::error::AppError,
-    features::user::{MediaAssetResolver, User},
+    features::user::User,
 };
 
 #[derive(Debug, Clone)]
 pub struct UserProfile {
     pub id: String,
     pub username: String,
-    pub handle: String,
-    pub avatar_url: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub modified_at: Option<DateTime<Utc>>,
 }
@@ -18,18 +16,11 @@ pub struct UserProfile {
 impl UserProfile {
     pub async fn resolve(
         user: User,
-        media_asset_resolver: &dyn MediaAssetResolver,
     ) -> Result<Self, AppError> {
-        let avatar_url = match user.avatar_media_asset_id {
-            Some(media_asset_id) => media_asset_resolver.resolve_url(media_asset_id).await?,
-            None => None,
-        };
-
+        let username = user.username.unwrap_or_else(|| format!("player-{}", user.id));
         Ok(Self {
             id: user.id,
-            username: user.username,
-            handle: user.handle,
-            avatar_url,
+            username,
             created_at: user.created_at,
             modified_at: user.modified_at,
         })

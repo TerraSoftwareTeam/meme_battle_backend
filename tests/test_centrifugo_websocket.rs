@@ -688,10 +688,10 @@ async fn test_lobbies_realtime_websocket_updates() {
                             if let Some(event_type) = data.get("event_type") {
                                 if event_type.as_str() == Some("lobby_created") {
                                     let payload = data.get("payload").unwrap();
-                                    assert_eq!(
-                                        payload.get("id").unwrap().as_str().unwrap(),
-                                        game_id.to_string()
-                                    );
+                                    // Skip events from other concurrent tests
+                                    if payload.get("id").and_then(|v| v.as_str()) != Some(game_id.to_string().as_str()) {
+                                        continue;
+                                    }
                                     assert_eq!(
                                         payload.get("players_count").unwrap().as_i64(),
                                         Some(1)
@@ -710,6 +710,7 @@ async fn test_lobbies_realtime_websocket_updates() {
         received_created,
         "Did not receive lobby_created event via WebSocket"
     );
+
 
     // 11. Player 2 joins the game (Trigger lobby_updated to 2)
     let join_resp2 = client
@@ -742,10 +743,10 @@ async fn test_lobbies_realtime_websocket_updates() {
                             if let Some(event_type) = data.get("event_type") {
                                 if event_type.as_str() == Some("lobby_updated") {
                                     let payload = data.get("payload").unwrap();
-                                    assert_eq!(
-                                        payload.get("id").unwrap().as_str().unwrap(),
-                                        game_id.to_string()
-                                    );
+                                    // Skip events from other concurrent tests
+                                    if payload.get("id").and_then(|v| v.as_str()) != Some(game_id.to_string().as_str()) {
+                                        continue;
+                                    }
                                     let count =
                                         payload.get("players_count").unwrap().as_i64().unwrap();
                                     if count == 2 {
@@ -831,10 +832,10 @@ async fn test_lobbies_realtime_websocket_updates() {
                             if let Some(event_type) = data.get("event_type") {
                                 if event_type.as_str() == Some("lobby_removed") {
                                     let payload = data.get("payload").unwrap();
-                                    assert_eq!(
-                                        payload.get("id").unwrap().as_str().unwrap(),
-                                        game_id.to_string()
-                                    );
+                                    // Skip events from other concurrent tests
+                                    if payload.get("id").and_then(|v| v.as_str()) != Some(game_id.to_string().as_str()) {
+                                        continue;
+                                    }
                                     received_removed = true;
                                     break;
                                 }
@@ -916,7 +917,6 @@ async fn test_large_media_upload_limit() {
 
     // Verify it is not rejected by Axum body limit layer (which would return 413 Payload Too Large)
     let status = upload_resp.status();
-    println!("Large upload response status: {}", status);
-
     assert_ne!(status, StatusCode::PAYLOAD_TOO_LARGE);
+
 }

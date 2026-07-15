@@ -65,7 +65,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn get_players(&self, game_id: Uuid) -> Result<Vec<GamePlayer>, AppError> {
         let players = sqlx::query_as::<_, GamePlayer>(
             r#"
-            SELECT game_id, user_id, score, is_ready, joined_at
+            SELECT game_id, user_id, score, is_ready, handle, joined_at
             FROM game_players
             WHERE game_id = $1
             ORDER BY joined_at ASC
@@ -324,6 +324,7 @@ impl GameRepository for GameRepositoryImpl {
                     gp.user_id,
                     gp.score,
                     gp.is_ready,
+                    gp.handle,
                     EXISTS (
                         SELECT 1
                         FROM round_submissions rs
@@ -347,6 +348,7 @@ impl GameRepository for GameRepositoryImpl {
                     gp.user_id,
                     gp.score,
                     gp.is_ready,
+                    gp.handle,
                     false AS has_submitted
                 FROM game_players gp
                 WHERE gp.game_id = $1
@@ -494,23 +496,36 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
+    async fn get_user_username(&self, user_id: Uuid) -> Result<Option<String>, AppError> {
+        // The username may be NULL for guest users. Use a scalar query that returns Option<String>.
+        let username = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT username FROM users WHERE id = $1",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(username)
+    }
+
     async fn add_player(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
         user_id: Uuid,
         is_ready: bool,
+        handle: String,
     ) -> Result<(), AppError> {
         sqlx::query(
             r#"
-            INSERT INTO game_players (game_id, user_id, score, is_ready)
-            VALUES ($1, $2, 0, $3)
+            INSERT INTO game_players (game_id, user_id, score, is_ready, handle)
+            VALUES ($1, $2, 0, $3, $4)
             ON CONFLICT (game_id, user_id) DO NOTHING
             "#,
         )
         .bind(game_id)
         .bind(user_id)
         .bind(is_ready)
+        .bind(handle)
         .execute(&mut **tx)
         .await?;
 
@@ -677,6 +692,25 @@ impl GameRepository for GameRepositoryImpl {
         .await?;
 
         Ok(())
+    }
+
+    async fn get_round_submissions(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+    ) -> Result<Vec<RoundSubmission>, AppError> {
+        let subs = sqlx::query_as::<_, RoundSubmission>(
+            r#"
+            SELECT id, round_id, user_id, submission_meme_id, submission_situation_id, submitted_at
+            FROM round_submissions
+            WHERE round_id = $1
+            "#,
+        )
+        .bind(round_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(subs)
     }
 
     async fn get_submissions_count(

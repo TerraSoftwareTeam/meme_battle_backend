@@ -55,7 +55,7 @@ pub fn create_router(state: AppState) -> Router {
 
     // /auth routes (login, register, refresh, etc.) — no logging here
     let auth_router = Router::new()
-        .nest("/auth", user_auth_routes())
+        .nest("/auth", user_auth_routes(state.clone()))
         .layer(middleware::from_fn(make_request_response_inspecter(false)));
 
     // Protected API routes

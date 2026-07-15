@@ -12,6 +12,8 @@ use crate::{
     },
 };
 
+use super::handle::resolve_handle;
+
 pub struct JoinGameCommand {
     repo: Arc<dyn GameRepository>,
     notification_sender: Arc<dyn GameNotificationSender>,
@@ -22,7 +24,7 @@ impl JoinGameCommand {
         Self { repo, notification_sender }
     }
 
-    pub async fn execute(&self, user_id: Uuid, game_id: Uuid) -> Result<(), AppError> {
+    pub async fn execute(&self, user_id: Uuid, game_id: Uuid, requested_handle: Option<String>) -> Result<(), AppError> {
         let mut tx = self.repo.begin().await?;
 
         // Row lock game
@@ -41,8 +43,20 @@ impl JoinGameCommand {
             return Err(AppError::Conflict("Player already in game".to_string()));
         }
 
+        // Fetch persistent nickname/username
+        let username = self.repo.get_user_username(user_id).await?;
+        let user_nickname = username.unwrap_or_else(|| format!("player-{}", user_id));
+
+        // Resolve handle using resolution rules and checking against existing lobby players
+        let resolved_handle = resolve_handle(
+            user_id,
+            requested_handle,
+            user_nickname,
+            &players,
+        )?;
+
         // Add player
-        self.repo.add_player(&mut tx, game_id, user_id, false).await?;
+        self.repo.add_player(&mut tx, game_id, user_id, false, resolved_handle.clone()).await?;
 
         // Increment version
         let new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
@@ -59,13 +73,14 @@ impl JoinGameCommand {
                 "PlayerJoined",
                 serde_json::json!({
                     "user_id": user_id,
-                    "players_count": players_count
+                    "players_count": players_count,
+                    "handle": &resolved_handle
                 }),
             )
             .await?;
 
         self.notification_sender
-            .notify_player_joined(&mut tx, game_id, user_id, players_count, new_version)
+            .notify_player_joined(&mut tx, game_id, user_id, resolved_handle.clone(), players_count, new_version)
             .await?;
 
         self.notification_sender
@@ -76,3 +91,5 @@ impl JoinGameCommand {
         Ok(())
     }
 }
+
+

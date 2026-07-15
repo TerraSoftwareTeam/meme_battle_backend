@@ -29,6 +29,24 @@ impl UpdateGameCommand {
         max_rounds: Option<i32>,
         hand_size: Option<i32>,
     ) -> Result<Game, AppError> {
+        // Validate situation pack IDs exist if updating them
+        if let Some(sit_pack_ids) = &selected_situation_pack_ids {
+            for &pack_id in sit_pack_ids {
+                if self.repo.find_situation_pack(pack_id).await?.is_none() {
+                    return Err(AppError::NotFound(format!("Situation pack not found: {}", pack_id)));
+                }
+            }
+        }
+
+        // Validate meme pack IDs exist if updating them
+        if let Some(meme_pack_ids) = &selected_meme_pack_ids {
+            for &pack_id in meme_pack_ids {
+                if self.repo.find_meme_pack(pack_id).await?.is_none() {
+                    return Err(AppError::NotFound(format!("Meme pack not found: {}", pack_id)));
+                }
+            }
+        }
+
         let mut tx = self.repo.begin().await?;
 
         // 1. Lock game

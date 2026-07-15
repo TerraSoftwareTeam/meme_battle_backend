@@ -6,7 +6,7 @@ use axum::{
 use http_body_util::BodyExt;
 use jsonwebtoken::{decode, Validation};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -18,19 +18,19 @@ use meme_battle_backend::{
             bootstrap::{build_app_state, run_database_migrations},
             config::Config,
         },
-        http::{dto::RestApiResponse, role::Role},
-        security::jwt::{make_jwt_token, Claims, KEYS},
+        http::dto::RestApiResponse,
+        security::jwt::{Claims, KEYS},
     },
     features::game::{
         api::dto::{
-            AddMemesToPackRequest, AddSituationsToPackRequest, CreateGameRequest,
-            CreateMemePackRequest, CreateMemePackResponse, CreateSituationPackRequest,
-            CreateSituationPackResponse, GameDto, GameStateDto, MemePackDetailsResponse,
-            ReadyRequest, SituationPackDetailsResponse, SubmitCardRequest, UpdateGameRequest,
-            UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest, ActiveGamesResponseDto,
-            LobbiesWsTokenDto,
+            ActiveGamesResponseDto, AddMemesToPackRequest, AddSituationsToPackRequest,
+            CreateGameRequest, CreateMemePackRequest, CreateMemePackResponse,
+            CreateSituationPackRequest, CreateSituationPackResponse, GameDto, GameStateDto,
+            LobbiesWsTokenDto, MemePackDetailsResponse, ReadyRequest, SituationPackDetailsResponse,
+            SubmitCardRequest, UpdateGameRequest, UpdateMemePackRequest,
+            UpdateSituationPackRequest, VoteRequest,
         },
-        ContentSafetyLevel, LanguageCode, GameCard, GameMode, RoundPhase,
+        ContentSafetyLevel, GameCard, GameMode, LanguageCode, RoundPhase,
     },
 };
 
@@ -305,7 +305,12 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     assert_eq!(status_my_memes2, StatusCode::OK);
     let my_memes2: RestApiResponse<Vec<MemePackDetailsResponse>> =
         serde_json::from_slice(&bytes_my_memes2).unwrap();
-    assert!(!my_memes2.0.data.unwrap().iter().any(|p| p.pack.id == meme_pack_id));
+    assert!(!my_memes2
+        .0
+        .data
+        .unwrap()
+        .iter()
+        .any(|p| p.pack.id == meme_pack_id));
 
     // 5. Create Game
     let create_game_payload = CreateGameRequest {
@@ -314,6 +319,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         selected_meme_pack_ids: vec![meme_pack_id],
         max_rounds: 3,
         hand_size: 5,
+        handle: None,
     };
 
     let (status_create_game, bytes_create_game) = send_request(
@@ -363,7 +369,8 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
 
     // 7. Ready Status
     // Vulnerability Fix Verification: Ready Status Leak for non-lobby players
-    let (status_rand, bytes_rand) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    let (status_rand, bytes_rand) =
+        send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
     assert_eq!(status_rand, StatusCode::OK);
     let auth_resp_rand: RestApiResponse<Value> = serde_json::from_slice(&bytes_rand).unwrap();
     let token_random = auth_resp_rand
@@ -448,7 +455,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let (submit_status1, _) = send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        &format!("/games/{}/submit", game_id),
         Some(&token1),
         Some(&SubmitCardRequest { card_id: card1_id }),
     )
@@ -477,7 +484,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let (submit_status2, _) = send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        &format!("/games/{}/submit", game_id),
         Some(&token2),
         Some(&SubmitCardRequest { card_id: card2_id }),
     )
@@ -506,7 +513,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let (submit_status3, _) = send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        &format!("/games/{}/submit", game_id),
         Some(&token3),
         Some(&SubmitCardRequest { card_id: card3_id }),
     )
@@ -561,7 +568,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let (vote_status1, _) = send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        &format!("/games/{}/vote", game_id),
         Some(&token1),
         Some(&VoteRequest {
             submission_id: sub2,
@@ -574,7 +581,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let (vote_status2, _) = send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        &format!("/games/{}/vote", game_id),
         Some(&token2),
         Some(&VoteRequest {
             submission_id: sub3,
@@ -587,7 +594,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     let (vote_status3, _) = send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        &format!("/games/{}/vote", game_id),
         Some(&token3),
         Some(&VoteRequest {
             submission_id: sub1,
@@ -1226,6 +1233,7 @@ async fn test_game_start_deterministic_and_precomputes() {
         selected_meme_pack_ids: vec![meme_pack_id],
         max_rounds: 3,
         hand_size: 5,
+        handle: None,
     };
     let (sg, bg) = send_request(
         &app,
@@ -1492,6 +1500,7 @@ async fn test_game_settings_update() {
         selected_meme_pack_ids: vec![meme_pack_id],
         max_rounds: 3,
         hand_size: 5,
+        handle: None,
     };
     let (sg, bg) = send_request(
         &app,
@@ -1679,6 +1688,7 @@ async fn test_game_play_to_completion_deletes_locks() {
         selected_meme_pack_ids: vec![meme_pack_id],
         max_rounds: 1,
         hand_size: 1,
+        handle: None,
     };
     let (_, bg) = send_request(
         &app,
@@ -1819,7 +1829,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        &format!("/games/{}/submit", game_id),
         Some(&token1),
         Some(&SubmitCardRequest { card_id: card1_id }),
     )
@@ -1827,7 +1837,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        &format!("/games/{}/submit", game_id),
         Some(&token2),
         Some(&SubmitCardRequest { card_id: card2_id }),
     )
@@ -1835,7 +1845,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/submit", game_id, round_id),
+        &format!("/games/{}/submit", game_id),
         Some(&token3),
         Some(&SubmitCardRequest { card_id: card3_id }),
     )
@@ -1867,7 +1877,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     let (self_vote_status, self_vote_bytes) = send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        &format!("/games/{}/vote", game_id),
         Some(&token1),
         Some(&VoteRequest {
             submission_id: sub1,
@@ -1886,7 +1896,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        &format!("/games/{}/vote", game_id),
         Some(&token1),
         Some(&VoteRequest {
             submission_id: sub2,
@@ -1896,7 +1906,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        &format!("/games/{}/vote", game_id),
         Some(&token2),
         Some(&VoteRequest {
             submission_id: sub3,
@@ -1906,7 +1916,7 @@ async fn test_game_play_to_completion_deletes_locks() {
     let (svote, _) = send_request(
         &app,
         Method::POST,
-        &format!("/games/{}/rounds/{}/vote", game_id, round_id),
+        &format!("/games/{}/vote", game_id),
         Some(&token3),
         Some(&VoteRequest {
             submission_id: sub1,
@@ -1939,25 +1949,54 @@ async fn test_game_catalog_endpoint() {
     let (pool, app) = setup_db_and_router().await;
 
     // Clean up games table to isolate this test's catalog assertions
-    sqlx::query("DELETE FROM games").execute(&pool).await.unwrap();
+    sqlx::query("DELETE FROM games")
+        .execute(&pool)
+        .await
+        .unwrap();
 
     // Create guest users
     let (status1, bytes1) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
     assert_eq!(status1, StatusCode::OK);
     let auth_resp1: RestApiResponse<Value> = serde_json::from_slice(&bytes1).unwrap();
-    let token1 = auth_resp1.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    let token1 = auth_resp1
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let (status2, bytes2) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
     assert_eq!(status2, StatusCode::OK);
     let auth_resp2: RestApiResponse<Value> = serde_json::from_slice(&bytes2).unwrap();
-    let token2 = auth_resp2.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    let token2 = auth_resp2
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let (status3, bytes3) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
     assert_eq!(status3, StatusCode::OK);
     let auth_resp3: RestApiResponse<Value> = serde_json::from_slice(&bytes3).unwrap();
-    let token3 = auth_resp3.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    let token3 = auth_resp3
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default()).unwrap().claims;
+    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+        .unwrap()
+        .claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
 
     // Setup 24 dummy media assets
@@ -1995,7 +2034,8 @@ async fn test_game_catalog_endpoint() {
     )
     .await;
     assert_eq!(status_create_meme, StatusCode::OK);
-    let meme_pack_resp: RestApiResponse<CreateMemePackResponse> = serde_json::from_slice(&bytes_create_meme).unwrap();
+    let meme_pack_resp: RestApiResponse<CreateMemePackResponse> =
+        serde_json::from_slice(&bytes_create_meme).unwrap();
     let meme_pack_id = meme_pack_resp.0.data.unwrap().id;
 
     // Create Situation Pack
@@ -2020,20 +2060,29 @@ async fn test_game_catalog_endpoint() {
     )
     .await;
     assert_eq!(status_create_sit, StatusCode::OK);
-    let sit_pack_resp: RestApiResponse<CreateSituationPackResponse> = serde_json::from_slice(&bytes_create_sit).unwrap();
+    let sit_pack_resp: RestApiResponse<CreateSituationPackResponse> =
+        serde_json::from_slice(&bytes_create_sit).unwrap();
     let sit_pack_id = sit_pack_resp.0.data.unwrap().id;
 
-    // Query active games when there is none
-    let (status_list1, bytes_list1) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
+    // Query active games when there is none from THIS test yet
+    // (can't assert 0 — other parallel tests may have created lobbies)
+    let (status_list1, _bytes_list1) =
+        send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
     assert_eq!(status_list1, StatusCode::OK);
-    let list_resp1: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list1).unwrap();
-    let data1 = list_resp1.0.data.unwrap();
-    assert_eq!(data1.games.len(), 0);
+    // Just verify the endpoint responds OK — we'll check specific game_id after creation
 
     // Verify ws-token endpoint returns tokens
-    let (status_ws_token, bytes_ws_token) = send_request::<()>(&app, Method::GET, "/games/catalog/ws-token", Some(&token1), None).await;
+    let (status_ws_token, bytes_ws_token) = send_request::<()>(
+        &app,
+        Method::GET,
+        "/games/catalog/ws-token",
+        Some(&token1),
+        None,
+    )
+    .await;
     assert_eq!(status_ws_token, StatusCode::OK);
-    let ws_token_resp: RestApiResponse<LobbiesWsTokenDto> = serde_json::from_slice(&bytes_ws_token).unwrap();
+    let ws_token_resp: RestApiResponse<LobbiesWsTokenDto> =
+        serde_json::from_slice(&bytes_ws_token).unwrap();
     let ws_token_data = ws_token_resp.0.data.unwrap();
     assert!(!ws_token_data.connection_token.is_empty());
     assert!(!ws_token_data.lobbies_subscription_token.is_empty());
@@ -2045,6 +2094,7 @@ async fn test_game_catalog_endpoint() {
         selected_meme_pack_ids: vec![meme_pack_id],
         max_rounds: 3,
         hand_size: 5,
+        handle: None,
     };
     let (status_game1, bytes_game1) = send_request(
         &app,
@@ -2059,14 +2109,19 @@ async fn test_game_catalog_endpoint() {
     let game1_id = game1_resp.0.data.unwrap().id;
 
     // Query active games: Game 1 should be present with player count = 1
-    let (status_list2, bytes_list2) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
+    let (status_list2, bytes_list2) =
+        send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
     assert_eq!(status_list2, StatusCode::OK);
-    let list_resp2: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list2).unwrap();
+    let list_resp2: RestApiResponse<ActiveGamesResponseDto> =
+        serde_json::from_slice(&bytes_list2).unwrap();
     let data2 = list_resp2.0.data.unwrap();
     let active_games = data2.games;
-    assert_eq!(active_games.len(), 1);
-    assert_eq!(active_games[0].id, game1_id);
-    assert_eq!(active_games[0].players_count, 1);
+    // Filter to only OUR game to avoid interference from parallel tests
+    let our_game = active_games
+        .iter()
+        .find(|g| g.id == game1_id)
+        .expect("Game 1 should be in the active games list");
+    assert_eq!(our_game.players_count, 1);
 
     // Player 2 joins Game 1
     let (status_join, _) = send_request::<Value>(
@@ -2091,13 +2146,19 @@ async fn test_game_catalog_endpoint() {
     assert_eq!(status_join3, StatusCode::OK);
 
     // Query active games: Game 1 should be present with player count = 3
-    let (status_list3, bytes_list3) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
+    let (status_list3, bytes_list3) =
+        send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
     assert_eq!(status_list3, StatusCode::OK);
-    let list_resp3: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list3).unwrap();
+    let list_resp3: RestApiResponse<ActiveGamesResponseDto> =
+        serde_json::from_slice(&bytes_list3).unwrap();
     let data3 = list_resp3.0.data.unwrap();
     let active_games3 = data3.games;
-    assert_eq!(active_games3.len(), 1);
-    assert_eq!(active_games3[0].players_count, 3);
+    // Filter to only OUR game to avoid interference from parallel tests
+    let our_game3 = active_games3
+        .iter()
+        .find(|g| g.id == game1_id)
+        .expect("Game 1 should still be in the active games list");
+    assert_eq!(our_game3.players_count, 3);
 
     // Players ready up and start the game to change status to playing
     let (status_ready1, _) = send_request(
@@ -2141,10 +2202,168 @@ async fn test_game_catalog_endpoint() {
     assert_eq!(status_start, StatusCode::OK);
 
     // Query active games: Game 1 should no longer be listed because status is 'playing'
-    let (status_list4, bytes_list4) = send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
+    let (status_list4, bytes_list4) =
+        send_request::<()>(&app, Method::GET, "/games", Some(&token1), None).await;
     assert_eq!(status_list4, StatusCode::OK);
-    let list_resp4: RestApiResponse<ActiveGamesResponseDto> = serde_json::from_slice(&bytes_list4).unwrap();
+    let list_resp4: RestApiResponse<ActiveGamesResponseDto> =
+        serde_json::from_slice(&bytes_list4).unwrap();
     let data4 = list_resp4.0.data.unwrap();
-    assert_eq!(data4.games.len(), 0);
+    // Our game should no longer appear in the lobby list
+    assert!(
+        !data4.games.iter().any(|g| g.id == game1_id),
+        "Started game should not appear in lobby list"
+    );
+}
+
+#[tokio::test]
+async fn test_game_handle_conflicts() {
+    let (pool, app) = setup_db_and_router().await;
+
+    // 1. Create Guest Users with unique usernames
+    let name2 = format!("hero-{}", Uuid::new_v4());
+    let name3 = format!("villain-{}", Uuid::new_v4());
+
+    let (status1, bytes1) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    assert_eq!(status1, StatusCode::OK);
+    let token1 = serde_json::from_slice::<RestApiResponse<Value>>(&bytes1).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    let (status2, bytes2) = send_request(
+        &app,
+        Method::POST,
+        "/auth/guest",
+        None,
+        Some(&json!({ "username": name2 })),
+    ).await;
+    assert_eq!(status2, StatusCode::OK);
+    let token2 = serde_json::from_slice::<RestApiResponse<Value>>(&bytes2).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    let (status3, bytes3) = send_request(
+        &app,
+        Method::POST,
+        "/auth/guest",
+        None,
+        Some(&json!({ "username": name3 })),
+    ).await;
+    assert_eq!(status3, StatusCode::OK);
+    let token3 = serde_json::from_slice::<RestApiResponse<Value>>(&bytes3).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    let claims3 = decode::<Claims>(&token3, &KEYS.decoding, &Validation::default()).unwrap().claims;
+    let user_id3 = claims3.sub.clone();
+
+    // 2. Setup packs
+    let mut media_ids = Vec::new();
+    for id in 4001..=4006 {
+        sqlx::query(
+            "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
+             VALUES ($1, $2::uuid, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
+             ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(id as i64)
+        .bind(Uuid::parse_str(&claims3.sub).unwrap())
+        .bind("hackclub_cdn")
+        .bind(format!("prov_conflict_id_{}", id))
+        .bind(format!("https://example.com/conflict_{}.png", id))
+        .bind(format!("meme_conflict_{}.png", id))
+        .execute(&pool)
+        .await
+        .unwrap();
+        media_ids.push(id as i64);
+    }
+
+    let (status_create_meme, bytes_create_meme) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/memes",
+        Some(&token1),
+        Some(&CreateMemePackRequest {
+            name: "Conflict Meme Pack".to_string(),
+            description: Some("Description".to_string()),
+            language_code: LanguageCode::Ru,
+            safety_level: ContentSafetyLevel::FamilyFriendly,
+            is_public: true,
+            media_ids,
+        }),
+    )
+    .await;
+    assert_eq!(status_create_meme, StatusCode::OK);
+    let meme_pack_id = serde_json::from_slice::<RestApiResponse<CreateMemePackResponse>>(&bytes_create_meme).unwrap().0.data.unwrap().id;
+
+    let (status_create_sit, bytes_create_sit) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/situations",
+        Some(&token1),
+        Some(&CreateSituationPackRequest {
+            name: "Conflict Situation Pack".to_string(),
+            description: Some("Description".to_string()),
+            language_code: LanguageCode::Ru,
+            safety_level: ContentSafetyLevel::FamilyFriendly,
+            is_public: true,
+            prompts: vec!["Prompt 1".to_string(), "Prompt 2".to_string()],
+        }),
+    )
+    .await;
+    assert_eq!(status_create_sit, StatusCode::OK);
+    let sit_pack_id = serde_json::from_slice::<RestApiResponse<CreateSituationPackResponse>>(&bytes_create_sit).unwrap().0.data.unwrap().id;
+
+    // 3. Create Game
+    let (status_game, bytes_game) = send_request(
+        &app,
+        Method::POST,
+        "/games",
+        Some(&token1),
+        Some(&CreateGameRequest {
+            mode: GameMode::SituationToMeme,
+            selected_situation_pack_ids: vec![sit_pack_id],
+            selected_meme_pack_ids: vec![meme_pack_id],
+            max_rounds: 3,
+            hand_size: 5,
+            handle: None,
+        }),
+    )
+    .await;
+    assert_eq!(status_game, StatusCode::OK);
+    let game_id = serde_json::from_slice::<RestApiResponse<GameDto>>(&bytes_game).unwrap().0.data.unwrap().id;
+
+    // 4. User 2 joins with explicit handle equal to User 3's nickname (name3)
+    let (join_status2, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game_id),
+        Some(&token2),
+        Some(&json!({ "handle": name3 })),
+    )
+    .await;
+    assert_eq!(join_status2, StatusCode::OK);
+
+    // 5. User 3 joins with explicit handle equal to User 3's nickname (name3) -> should yield 409 Conflict because User 2 already claimed it
+    let (join_status3_fail, _) = send_request(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game_id),
+        Some(&token3),
+        Some(&json!({ "handle": name3 })),
+    )
+    .await;
+    assert_eq!(join_status3_fail, StatusCode::CONFLICT);
+
+    // 6. User 3 joins with None (implicit handle) -> should resolve to user_id3 (UUID string) because their persistent nickname (name3) conflicts with User 2's chosen handle in this lobby
+    let (join_status3_ok, _) = send_request::<()>(
+        &app,
+        Method::POST,
+        &format!("/games/{}/join", game_id),
+        Some(&token3),
+        None,
+    )
+    .await;
+    assert_eq!(join_status3_ok, StatusCode::OK);
+
+    // Verify resolved handle in DB is user_id3
+    let handle_in_db: String = sqlx::query_scalar("SELECT handle FROM game_players WHERE game_id = $1 AND user_id = $2::uuid")
+        .bind(game_id)
+        .bind(&user_id3)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(handle_in_db, user_id3);
 }
 

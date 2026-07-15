@@ -1,4 +1,5 @@
 use axum::{
+    body::Bytes,
     extract::{Path, State},
     response::IntoResponse,
     Json,
@@ -13,7 +14,8 @@ use crate::{
     features::game::{
         api::dto::{
             CreateGameRequest, UpdateGameRequest, ReadyRequest, SubmitCardRequest, VoteRequest, GameDto,
-            ActiveGameDto, ActiveGamesResponseDto, GameStateDto, PlayerDto, RoundDto, CreateMemePackRequest, CreateMemePackResponse,
+            JoinGameRequest,
+            ActiveGameDto, ActiveGamesResponseDto, GameStateDto, PlayerDto, RoundDto, RoundSubmissionDto, CreateMemePackRequest, CreateMemePackResponse,
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
@@ -47,6 +49,7 @@ pub async fn create_game(
             payload.selected_meme_pack_ids,
             payload.max_rounds,
             payload.hand_size,
+            payload.handle,
         )
         .await?;
 
@@ -150,6 +153,16 @@ pub async fn get_game_state(
         phase: round.phase,
         prompt: res.prompt,
         phase_expires_at: round.phase_expires_at,
+        submissions: res.submissions.map(|list| {
+            list.into_iter()
+                .map(|s| RoundSubmissionDto {
+                    id: s.id,
+                    card: s.card,
+                })
+                .collect()
+        }),
+        my_submission: res.my_submission,
+        has_voted: res.has_voted,
     });
 
     let state_dto = GameStateDto {
@@ -185,6 +198,7 @@ pub async fn get_ws_token(
 #[utoipa::path(
     post,
     path = "/games/{id}/join",
+    request_body = JoinGameRequest,
     responses((status = 200, description = "Join the game lobby")),
     tag = "Games"
 )]
@@ -192,13 +206,23 @@ pub async fn join_game(
     State(state): State<AppState>,
     current_user: CurrentUser,
     Path(id_str): Path<String>,
+    body: Bytes,
 ) -> Result<impl IntoResponse, AppError> {
     let user_id = Uuid::parse_str(&current_user.user_id)
         .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
 
-    state.game.join_game.execute(user_id, id).await?;
+    // Parse body only when non-empty; empty body (or no body) means no handle override
+    let requested_handle = if body.is_empty() {
+        None
+    } else {
+        let req: JoinGameRequest = serde_json::from_slice(&body)
+            .map_err(|e| AppError::ValidationError(format!("Invalid JSON body: {}", e)))?;
+        req.handle
+    };
+
+    state.game.join_game.execute(user_id, id, requested_handle).await?;
 
     Ok(RestApiResponse::success_with_message("Joined successfully".to_string(), ()))
 }
@@ -249,7 +273,7 @@ pub async fn start_game_session(
 
 #[utoipa::path(
     post,
-    path = "/games/{id}/rounds/{round_id}/submit",
+    path = "/games/{id}/submit",
     request_body = SubmitCardRequest,
     responses((status = 200, description = "Submit a card for the round")),
     tag = "Games"
@@ -257,20 +281,18 @@ pub async fn start_game_session(
 pub async fn submit_card(
     State(state): State<AppState>,
     current_user: CurrentUser,
-    Path((id_str, round_id_str)): Path<(String, String)>,
+    Path(id_str): Path<String>,
     Json(payload): Json<SubmitCardRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let user_id = Uuid::parse_str(&current_user.user_id)
         .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
-    let round_id = Uuid::parse_str(&round_id_str)
-        .map_err(|_| AppError::ValidationError("Invalid round ID".to_string()))?;
 
     state
         .game
         .submit_card
-        .execute(user_id, id, round_id, payload.card_id)
+        .execute(user_id, id, payload.card_id)
         .await?;
 
     Ok(RestApiResponse::success_with_message("Card submitted successfully".to_string(), ()))
@@ -278,7 +300,7 @@ pub async fn submit_card(
 
 #[utoipa::path(
     post,
-    path = "/games/{id}/rounds/{round_id}/vote",
+    path = "/games/{id}/vote",
     request_body = VoteRequest,
     responses((status = 200, description = "Vote for a submission")),
     tag = "Games"
@@ -286,20 +308,18 @@ pub async fn submit_card(
 pub async fn vote_card(
     State(state): State<AppState>,
     current_user: CurrentUser,
-    Path((id_str, round_id_str)): Path<(String, String)>,
+    Path(id_str): Path<String>,
     Json(payload): Json<VoteRequest>,
 ) -> Result<impl IntoResponse, AppError> {
     let user_id = Uuid::parse_str(&current_user.user_id)
         .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
-    let round_id = Uuid::parse_str(&round_id_str)
-        .map_err(|_| AppError::ValidationError("Invalid round ID".to_string()))?;
 
     state
         .game
         .vote_card
-        .execute(user_id, id, round_id, payload.submission_id)
+        .execute(user_id, id, payload.submission_id)
         .await?;
 
     Ok(RestApiResponse::success_with_message("Vote registered successfully".to_string(), ()))

@@ -6,6 +6,7 @@ pub mod submit_card;
 pub mod vote_card;
 pub mod update;
 pub mod process_timeout;
+pub mod handle;
 
 pub use create::CreateGameCommand;
 pub use join::JoinGameCommand;
@@ -15,3 +16,4 @@ pub use submit_card::SubmitCardCommand;
 pub use vote_card::VoteCardCommand;
 pub use update::UpdateGameCommand;
 pub use process_timeout::ProcessTimeoutCommand;
+pub use handle::resolve_handle;

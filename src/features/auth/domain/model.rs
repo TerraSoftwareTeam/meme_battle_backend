@@ -19,14 +19,18 @@ pub struct RefreshTokenRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterUser {
     pub username: String,
-    pub handle: String,
     pub password: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginUser {
-    pub handle: String,
+    pub username: String,
     pub password: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuestAuth {
+    pub username: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

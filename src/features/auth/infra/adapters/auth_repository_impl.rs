@@ -59,34 +59,34 @@ impl From<RefreshTokenRow> for RefreshTokenRecord {
 impl AuthRepository for AuthRepositoryImpl {
     async fn create_user_with_auth(
         &self,
-        username: String,
-        handle: String,
+        username: Option<String>,
         password_hash: Option<String>,
     ) -> Result<String, AppError> {
         let mut tx = self.pool.begin().await?;
 
-        let existing_user_id: Option<String> =
-            sqlx::query_scalar("SELECT id::text FROM users WHERE handle = $1")
-                .bind(&handle)
-                .fetch_optional(&mut *tx)
-                .await?;
+        if let Some(ref name) = username {
+            let existing_user_id: Option<String> =
+                sqlx::query_scalar("SELECT id::text FROM users WHERE username = $1")
+                    .bind(name)
+                    .fetch_optional(&mut *tx)
+                    .await?;
 
-        if existing_user_id.is_some() {
-            tx.rollback().await?;
-            return Err(AppError::UserAlreadyExists);
+            if existing_user_id.is_some() {
+                tx.rollback().await?;
+                return Err(AppError::UserAlreadyExists);
+            }
         }
 
         let user_id = uuid::Uuid::new_v4().to_string();
 
         sqlx::query(
             r#"
-                INSERT INTO users (id, username, handle, role)
-                VALUES ($1::uuid, $2, $3, 'user')
+                INSERT INTO users (id, username, role)
+                VALUES ($1::uuid, $2, 'user')
             "#,
         )
         .bind(&user_id)
         .bind(username)
-        .bind(handle)
         .execute(&mut *tx)
         .await?;
 
@@ -106,16 +106,16 @@ impl AuthRepository for AuthRepositoryImpl {
         Ok(user_id)
     }
 
-    async fn find_by_handle(&self, handle: &str) -> Result<Option<UserAuth>, AppError> {
+    async fn find_by_username(&self, username: &str) -> Result<Option<UserAuth>, AppError> {
         let result = sqlx::query_as::<_, UserAuthRow>(
             r#"
                 SELECT ua.user_id::text AS user_id, ua.password_hash, u.role::text AS role
                 FROM user_auth ua
                 JOIN users u ON ua.user_id = u.id
-                WHERE u.handle = $1
+                WHERE u.username = $1
             "#,
         )
-        .bind(handle)
+        .bind(username)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -194,6 +194,25 @@ impl AuthRepository for AuthRepositoryImpl {
             .execute(&self.pool)
             .await?;
 
+        Ok(())
+    }
+
+    async fn update_password_hash(
+        &self,
+        user_id: &str,
+        password_hash: String,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+                UPDATE user_auth
+                SET password_hash = $2, modified_at = CURRENT_TIMESTAMP
+                WHERE user_id = $1::uuid
+            "#,
+        )
+        .bind(user_id)
+        .bind(password_hash)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 }

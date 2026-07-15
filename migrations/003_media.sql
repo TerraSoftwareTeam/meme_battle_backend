@@ -19,9 +19,3 @@ CREATE INDEX idx_media_assets_owner_created
 
 CREATE INDEX idx_media_assets_status_created
     ON media_assets(status, created_at);
-
-ALTER TABLE users
-    ADD CONSTRAINT fk_users_avatar_media
-    FOREIGN KEY (avatar_media_asset_id)
-    REFERENCES media_assets(id)
-    ON DELETE SET NULL;

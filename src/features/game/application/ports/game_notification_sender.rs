@@ -12,6 +12,7 @@ pub trait GameNotificationSender: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
         user_id: Uuid,
+        handle: String,
         players_count: i32,
         version: i64,
     ) -> Result<(), AppError>;
@@ -31,6 +32,7 @@ pub trait GameNotificationSender: Send + Sync {
         game_id: Uuid,
         rounds_count: i32,
         hand_size: i32,
+        players: Vec<crate::features::game::GamePlayer>,
         version: i64,
     ) -> Result<(), AppError>;
 

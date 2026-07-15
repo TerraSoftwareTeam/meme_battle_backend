@@ -5,14 +5,14 @@ use crate::{
     },
     features::user::api::{
         dto::{
-            request::{SearchUserDto, UpdateMeDto},
+            request::UpdateMeDto,
             response::UserDto,
         },
-        handlers::validation::{extract_avatar_file, validate_update_me},
+        handlers::validation::validate_update_me,
     },
 };
 use axum::{
-    extract::{Multipart, State},
+    extract::State,
     response::IntoResponse,
     Json,
 };
@@ -54,27 +54,6 @@ pub async fn update_me(
 }
 
 #[utoipa::path(
-    put,
-    path = "/user/me/avatar",
-    request_body(content = crate::features::user::api::dto::request::UploadAvatarRequestDto, content_type = "multipart/form-data"),
-    responses((status = 200, description = "Update current user avatar", body = UserDto)),
-    tag = "Me"
-)]
-pub async fn update_my_avatar(
-    State(state): State<UserState>,
-    current_user: CurrentUser,
-    mut multipart: Multipart,
-) -> Result<impl IntoResponse, AppError> {
-    let file = extract_avatar_file(&mut multipart, state.max_file_size_bytes).await?;
-    let user = state
-        .update_my_avatar
-        .execute(current_user.user_id, file)
-        .await?;
-
-    Ok(RestApiResponse::success(UserDto::from(user)))
-}
-
-#[utoipa::path(
     get,
     path = "/user/{id}",
     responses((status = 200, description = "Get user by ID", body = UserDto)),
@@ -88,35 +67,6 @@ pub async fn get_user_by_id(
     Ok(RestApiResponse::success(UserDto::from(user)))
 }
 
-#[utoipa::path(
-    post,
-    path = "/user/list",
-    request_body = SearchUserDto,
-    responses((status = 200, description = "List users by condition", body = [UserDto])),
-    tag = "Users"
-)]
-pub async fn get_user_list(
-    State(state): State<UserState>,
-    Json(payload): Json<SearchUserDto>,
-) -> Result<impl IntoResponse, AppError> {
-    let users = state.get_user_list.execute(payload.into()).await?;
-    Ok(RestApiResponse::success(
-        users.into_iter().map(UserDto::from).collect::<Vec<_>>(),
-    ))
-}
-
-#[utoipa::path(
-    get,
-    path = "/user",
-    responses((status = 200, description = "List all users", body = [UserDto])),
-    tag = "Users"
-)]
-pub async fn get_users(State(state): State<UserState>) -> Result<impl IntoResponse, AppError> {
-    let users = state.get_users.execute().await?;
-    Ok(RestApiResponse::success(
-        users.into_iter().map(UserDto::from).collect::<Vec<_>>(),
-    ))
-}
 
 #[utoipa::path(
     post,

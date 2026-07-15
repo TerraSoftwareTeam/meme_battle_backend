@@ -19,11 +19,5 @@ pub trait UserRepository: Send + Sync {
         update: UpdateUserProfile,
     ) -> Result<Option<User>, AppError>;
 
-    async fn update_avatar_media_asset_id(
-        &self,
-        id: &str,
-        avatar_media_asset_id: i64,
-    ) -> Result<Option<User>, AppError>;
-
     async fn promote_to_admin(&self, id: &str) -> Result<Option<User>, AppError>;
 }

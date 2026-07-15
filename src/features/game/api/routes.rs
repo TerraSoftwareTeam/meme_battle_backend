@@ -13,6 +13,7 @@ use crate::{
     features::game::{
         api::dto::{
             CreateGameRequest, UpdateGameRequest, GameDto, GameStateDto, PlayerDto, ReadyRequest, RoundDto,
+            JoinGameRequest,
             SubmitCardRequest, VoteRequest, CreateMemePackRequest, CreateMemePackResponse,
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
@@ -43,8 +44,8 @@ pub fn game_routes() -> Router<AppState> {
         .route("/{id}/join", post(handlers::join_game))
         .route("/{id}/ready", post(handlers::set_ready))
         .route("/{id}/start", post(handlers::start_game_session))
-        .route("/{id}/rounds/{round_id}/submit", post(handlers::submit_card))
-        .route("/{id}/rounds/{round_id}/vote", post(handlers::vote_card))
+        .route("/{id}/submit", post(handlers::submit_card))
+        .route("/{id}/vote", post(handlers::vote_card))
 }
 
 #[derive(OpenApi)]
@@ -85,6 +86,7 @@ pub fn game_routes() -> Router<AppState> {
         GameStateDto,
         GameCard,
         CreateGameRequest,
+        JoinGameRequest,
         UpdateGameRequest,
         SubmitCardRequest,
         VoteRequest,
