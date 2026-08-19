@@ -65,7 +65,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let user_exists = Arc::new(UserExistsQuery::new(auth_repository.clone()));
     let change_password = Arc::new(ChangePasswordCommand::new(auth_repository.clone()));
     let refresh_session = Arc::new(RefreshSessionCommand::new(
-        auth_repository,
+        auth_repository.clone(),
         config.admin_user_ids.clone(),
     ));
 
@@ -82,22 +82,35 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     ));
     let get_media_asset_url = Arc::new(GetMediaAssetUrlQuery::new(media_repository.clone()));
     let mark_media_attached = Arc::new(MarkMediaAttachedCommand::new(media_repository.clone()));
+    // Cross-feature adapter for User -> Auth
+    let user_auth_service: Arc<dyn crate::features::user::UserAuthService> = Arc::new(
+        crate::common::app::adapters::UserAuthServiceAdapter::new(
+            change_password.clone(),
+            auth_repository.clone(),
+        )
+    );
+
     // User
     let user_repository: Arc<dyn UserRepository> = Arc::new(UserRepositoryImpl::new(pool.clone()));
     let update_me = Arc::new(UpdateMeCommand::new(
         user_repository.clone(),
+        user_auth_service.clone(),
     ));
     let get_me = Arc::new(GetMeQuery::new(
         user_repository.clone(),
+        user_auth_service.clone(),
     ));
     let get_user_by_id = Arc::new(GetUserByIdQuery::new(
         user_repository.clone(),
+        user_auth_service.clone(),
     ));
     let get_user_list = Arc::new(GetUserListQuery::new(
         user_repository.clone(),
+        user_auth_service.clone(),
     ));
     let get_users = Arc::new(GetUsersQuery::new(
         user_repository.clone(),
+        user_auth_service,
     ));
     let promote_to_admin = Arc::new(PromoteToAdminCommand::new(user_repository));
 

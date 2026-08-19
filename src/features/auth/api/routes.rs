@@ -1,6 +1,6 @@
 use crate::common::app::state::AppState;
 use crate::features::auth::api::dto::request::{
-    AuthUserDto, RefreshSessionDto, RegisterAuthUserDto, GuestAuthDto, ChangePasswordDto,
+    AuthUserDto, GuestAuthDto, RefreshSessionDto, RegisterAuthUserDto,
 };
 use axum::{routing::post, Router};
 
@@ -16,14 +16,12 @@ use utoipa::OpenApi;
         super::handlers::create_user_auth,
         super::handlers::auth_as_guest,
         super::handlers::refresh_session,
-        super::handlers::change_password,
     ),
     components(schemas(
         AuthUserDto,
         RegisterAuthUserDto,
         GuestAuthDto,
         RefreshSessionDto,
-        ChangePasswordDto,
         crate::common::security::jwt::AuthBody,
     )),
     tags(
@@ -35,15 +33,10 @@ pub struct UserAuthApiDoc;
 
 /// This function creates a router for the user authentication routes.
 /// It defines the routes and their corresponding handlers.
-pub fn user_auth_routes(state: AppState) -> Router<AppState> {
+pub fn user_auth_routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/login", post(handlers::login_user))
         .route("/register", post(handlers::create_user_auth))
         .route("/guest", post(handlers::auth_as_guest))
         .route("/refresh", post(handlers::refresh_session))
-        .route(
-            "/change-password",
-            post(handlers::change_password)
-                .route_layer(axum::middleware::from_fn_with_state(state, crate::common::security::jwt::jwt_auth))
-        )
 }

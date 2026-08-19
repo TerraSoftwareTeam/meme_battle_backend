@@ -18,3 +18,9 @@ pub struct SearchUser {
 pub struct UpdateUserProfile {
     pub username: Option<String>,
 }
+
+#[derive(Debug, Clone)]
+pub struct UpdateMeInput {
+    pub username: Option<String>,
+    pub password: Option<String>,
+}

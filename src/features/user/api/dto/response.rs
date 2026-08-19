@@ -12,6 +12,7 @@ pub struct UserDto {
     pub created_at: Option<DateTime<Utc>>,
     #[serde(with = "crate::common::serde::ts_format::option")]
     pub modified_at: Option<DateTime<Utc>>,
+    pub is_guest: bool,
 }
 
 impl From<UserProfile> for UserDto {
@@ -21,6 +22,7 @@ impl From<UserProfile> for UserDto {
             username: user.username,
             created_at: user.created_at,
             modified_at: user.modified_at,
+            is_guest: user.is_guest,
         }
     }
 }

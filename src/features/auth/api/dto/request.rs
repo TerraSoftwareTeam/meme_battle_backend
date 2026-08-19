@@ -65,9 +65,3 @@ impl From<RefreshSessionDto> for RefreshSession {
         }
     }
 }
-
-#[derive(Debug, Deserialize, ToSchema, Validate)]
-pub struct ChangePasswordDto {
-    #[validate(length(min = 6, max = 128, message = "Password must be between 6 and 128 characters"))]
-    pub new_password: String,
-}

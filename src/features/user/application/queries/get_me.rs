@@ -2,19 +2,22 @@ use std::sync::Arc;
 
 use crate::{
     common::http::error::AppError,
-    features::user::{UserProfile, UserRepository},
+    features::user::{application::ports::UserAuthService, UserProfile, UserRepository},
 };
 
 pub struct GetMeQuery {
     repo: Arc<dyn UserRepository>,
+    user_auth_service: Arc<dyn UserAuthService>,
 }
 
 impl GetMeQuery {
     pub fn new(
         repo: Arc<dyn UserRepository>,
+        user_auth_service: Arc<dyn UserAuthService>,
     ) -> Self {
         Self {
             repo,
+            user_auth_service,
         }
     }
 
@@ -25,6 +28,8 @@ impl GetMeQuery {
             .await?
             .ok_or_else(|| AppError::NotFound("User not found".into()))?;
 
-        UserProfile::resolve(user).await
+        let is_guest = self.user_auth_service.is_guest(&user_id).await?;
+
+        Ok(UserProfile::new(user, is_guest))
     }
 }

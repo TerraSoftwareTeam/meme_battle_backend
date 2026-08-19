@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use validator::Validate;
 
-use crate::features::user::{SearchUser, UpdateUserProfile};
+use crate::features::user::{SearchUser, UpdateMeInput};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SearchUserDto {
@@ -21,14 +21,17 @@ impl From<SearchUserDto> for SearchUser {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct UpdateMeDto {
-    #[validate(length(min = 1, max = 64))]
+    #[validate(length(min = 1, max = 64, message = "Username must be between 1 and 64 characters"))]
     pub username: Option<String>,
+    #[validate(length(min = 1, max = 128, message = "Password cannot be empty"))]
+    pub password: Option<String>,
 }
 
-impl From<UpdateMeDto> for UpdateUserProfile {
+impl From<UpdateMeDto> for UpdateMeInput {
     fn from(dto: UpdateMeDto) -> Self {
         Self {
             username: dto.username,
+            password: dto.password,
         }
     }
 }

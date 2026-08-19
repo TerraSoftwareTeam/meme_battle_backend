@@ -71,17 +71,37 @@ async fn test_user_routes_lifecycle() {
     let user_id1 = me_data.get("id").unwrap().as_str().unwrap().to_string();
     assert_eq!(me_data.get("username").unwrap().as_str().unwrap(), username1);
 
-    // --- 2. Test PATCH /user/me ---
+    // --- 2. Test PATCH /user/me (update username and password simultaneously) ---
     let updated_username = format!("u1-new-{}", Uuid::new_v4());
+    let new_password = "brandnewpassword123";
     let patch_resp = client.patch(format!("{}/user/me", base_url))
         .bearer_auth(&access_token1)
         .json(&json!({
-            "username": updated_username
+            "username": updated_username,
+            "password": new_password
         }))
         .send().await.unwrap();
     assert_eq!(patch_resp.status(), StatusCode::OK);
     let patch_body: RestApiResponse<Value> = patch_resp.json().await.unwrap();
-    assert_eq!(patch_body.0.data.unwrap().get("username").unwrap().as_str().unwrap(), updated_username);
+    let patch_data = patch_body.0.data.unwrap();
+    assert_eq!(patch_data.get("username").unwrap().as_str().unwrap(), updated_username);
+    assert_eq!(patch_data.get("is_guest").unwrap().as_bool().unwrap(), false);
+
+    // Verify login with new password works
+    let new_login_resp = client.post(format!("{}/auth/login", base_url))
+        .json(&json!({
+            "username": updated_username,
+            "password": new_password
+        }))
+        .send().await.unwrap();
+    assert_eq!(new_login_resp.status(), StatusCode::OK);
+
+    // --- 2b. Test empty PATCH /user/me fails validation ---
+    let empty_patch_resp = client.patch(format!("{}/user/me", base_url))
+        .bearer_auth(&access_token1)
+        .json(&json!({}))
+        .send().await.unwrap();
+    assert_eq!(empty_patch_resp.status(), StatusCode::BAD_REQUEST);
 
     // --- 3. Test GET /user/{id} ---
     let get_by_id_resp = client.get(format!("{}/user/{}", base_url, user_id1))
@@ -89,7 +109,9 @@ async fn test_user_routes_lifecycle() {
         .send().await.unwrap();
     assert_eq!(get_by_id_resp.status(), StatusCode::OK);
     let get_by_id_body: RestApiResponse<Value> = get_by_id_resp.json().await.unwrap();
-    assert_eq!(get_by_id_body.0.data.unwrap().get("username").unwrap().as_str().unwrap(), updated_username);
+    let get_by_id_data = get_by_id_body.0.data.unwrap();
+    assert_eq!(get_by_id_data.get("username").unwrap().as_str().unwrap(), updated_username);
+    assert_eq!(get_by_id_data.get("is_guest").unwrap().as_bool().unwrap(), false);
 
     // --- 4. Test POST /user/{id}/promote-admin ---
     // Register another user to promote

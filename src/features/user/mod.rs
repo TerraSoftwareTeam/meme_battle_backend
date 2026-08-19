@@ -9,12 +9,13 @@ pub use application::commands::{
     promote_to_admin::PromoteToAdminCommand, update_me::UpdateMeCommand,
 };
 pub use application::models::user_profile::UserProfile;
+pub use application::ports::user_auth_service::UserAuthService;
 pub use application::queries::{
     get_me::GetMeQuery, get_user_by_id::GetUserByIdQuery, get_user_list::GetUserListQuery,
     get_users::GetUsersQuery,
 };
 pub use domain::{
-    model::{SearchUser, UpdateUserProfile, User},
+    model::{SearchUser, UpdateMeInput, UpdateUserProfile, User},
     ports::user_repository::UserRepository,
 };
 pub use infra::adapters::user_repository_impl::UserRepositoryImpl;

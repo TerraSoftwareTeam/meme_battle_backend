@@ -1,15 +1,15 @@
 use crate::{
     common::{
         app::state::AuthState,
-        http::{current_user::CurrentUser, dto::RestApiResponse, error::AppError},
+        http::{dto::RestApiResponse, error::AppError},
         security::jwt::AuthBody,
     },
     features::auth::api::{
         dto::request::{
-            AuthUserDto, ChangePasswordDto, GuestAuthDto, RefreshSessionDto, RegisterAuthUserDto,
+            AuthUserDto, GuestAuthDto, RefreshSessionDto, RegisterAuthUserDto,
         },
         handlers::validation::{
-            validate_auth_user, validate_change_password, validate_guest_auth,
+            validate_auth_user, validate_guest_auth,
             validate_refresh_session, validate_register_auth_user,
         },
     },
@@ -89,26 +89,4 @@ pub async fn refresh_session(
 
     let auth_body = state.refresh_session.execute(payload.into()).await?;
     Ok(RestApiResponse::success(auth_body))
-}
-
-#[utoipa::path(
-    post,
-    path = "/auth/change-password",
-    request_body = ChangePasswordDto,
-    responses((status = 200, description = "Password changed successfully")),
-    security(("bearer_auth" = [])),
-    tag = "UserAuth"
-)]
-pub async fn change_password(
-    State(state): State<AuthState>,
-    current_user: CurrentUser,
-    Json(payload): Json<ChangePasswordDto>,
-) -> Result<impl IntoResponse, AppError> {
-    validate_change_password(&payload)?;
-
-    state
-        .change_password
-        .execute(current_user.user_id, payload.new_password)
-        .await?;
-    Ok(RestApiResponse::success(()))
 }

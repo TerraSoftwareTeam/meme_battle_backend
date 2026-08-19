@@ -1,7 +1,9 @@
 pub mod game_notification_sender_adapter;
 pub mod game_token_generator_adapter;
 pub mod game_media_manager_adapter;
+pub mod user_auth_service_adapter;
 
 pub use game_notification_sender_adapter::GameNotificationSenderAdapter;
 pub use game_token_generator_adapter::GameTokenGeneratorAdapter;
 pub use game_media_manager_adapter::GameMediaManagerAdapter;
+pub use user_auth_service_adapter::UserAuthServiceAdapter;
