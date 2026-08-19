@@ -177,7 +177,7 @@ impl ProcessTimeoutCommand {
                 }
 
                 // Fetch fresh scores
-                let updated_players = self.repo.get_players(game.id).await?;
+                let updated_players = self.repo.get_players_tx(&mut tx, game.id).await?;
                 let scores: Vec<(Uuid, i32)> = updated_players
                     .iter()
                     .map(|p| (p.user_id, p.score))
@@ -301,6 +301,7 @@ impl ProcessTimeoutCommand {
                             }
                         }
                         GameEvent::GameFinished { final_scores } => {
+                            let updated_players = self.repo.get_players_tx(&mut tx, game.id).await?;
                             let winner = updated_players
                                 .iter()
                                 .max_by_key(|p| p.score)

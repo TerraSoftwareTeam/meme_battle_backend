@@ -501,6 +501,7 @@ async fn test_real_game_centrifugo_gameplay_flow() {
         .post(format!("{}/games", base_url))
         .bearer_auth(&tokens[0])
         .json(&CreateGameRequest {
+            name: "Real Game Centrifugo".to_string(),
             mode: meme_battle_backend::features::game::GameMode::SituationToMeme,
             selected_situation_pack_ids: vec![sit_pack_id],
             selected_meme_pack_ids: vec![meme_pack_id],
@@ -984,6 +985,15 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             payload.get("scoreboard").unwrap().as_array().is_some(),
             "Missing scoreboard"
         );
+        let scoreboard = payload.get("scoreboard").unwrap().as_array().unwrap();
+        let total_score: i64 = scoreboard
+            .iter()
+            .map(|item| item.get("score").unwrap().as_i64().unwrap())
+            .sum();
+        assert_eq!(
+            total_score, 1,
+            "Total score in round 1 scoreboard should be 1 point awarded to the winner immediately"
+        );
         assert!(
             payload.get("round_scoreboard").unwrap().as_array().is_some(),
             "Missing round_scoreboard"
@@ -1136,12 +1146,28 @@ async fn test_real_game_centrifugo_gameplay_flow() {
         let data = push_data(&event).unwrap();
         let payload = data.get("payload").unwrap();
         assert_eq!(payload.get("round_number").unwrap().as_i64(), Some(2));
-        assert!(payload.get("winner_user_id").is_some());
+        assert!(payload.get("winner_user_id").is_some(), "Missing winner_user_id in round 2 round_finished");
+
+        // Cumulative scoreboard after 2 rounds must total 2 points (1 per round)
+        let scoreboard = payload.get("scoreboard").unwrap().as_array()
+            .expect("scoreboard must be an array in round_finished");
+        assert_eq!(scoreboard.len(), 3, "Scoreboard must contain all 3 players");
+        let total_score: i64 = scoreboard
+            .iter()
+            .map(|item| item.get("score").unwrap().as_i64().unwrap())
+            .sum();
+        assert_eq!(
+            total_score, 2,
+            "After Round 2, cumulative scoreboard total must be 2 (1 point per round × 2 rounds). If this is 1, the score was not credited immediately after Round 1."
+        );
+
         assert!(
             payload.get("round_scoreboard").unwrap().as_array().is_some(),
             "Missing round_scoreboard"
         );
     }
+
+
 
     // ── 23. Verify game_finished event on game channel ────────────────────────
 
@@ -1176,6 +1202,14 @@ async fn test_real_game_centrifugo_gameplay_flow() {
                 "Scoreboard entry missing score"
             );
         }
+        let total_score: i64 = scoreboard
+            .iter()
+            .map(|item| item.get("score").unwrap().as_i64().unwrap())
+            .sum();
+        assert_eq!(
+            total_score, 2,
+            "Total score in final scoreboard should be 2 points awarded across 2 rounds"
+        );
 
         // Winner must be one of the game's players
         let winner_id =

@@ -78,6 +78,7 @@ sequenceDiagram
 >       {
 >         "id": "d3b07384-d113-4956-a517-8828d18471a4",
 >         "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+>         "name": "Мемная битва",
 >         "mode": "situation_to_meme",
 >         "max_rounds": 3,
 >         "hand_size": 5,
@@ -331,6 +332,7 @@ sequenceDiagram
 {
   "id": "d3b07384-d113-4956-a517-8828d18471a4",
   "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+  "name": "Мемная битва",
   "mode": "situation_to_meme",
   "max_rounds": 3,
   "hand_size": 5,

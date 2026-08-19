@@ -23,12 +23,27 @@ impl UpdateGameCommand {
         &self,
         user_id: Uuid,
         game_id: Uuid,
+        name: Option<String>,
         mode: Option<GameMode>,
         selected_situation_pack_ids: Option<Vec<Uuid>>,
         selected_meme_pack_ids: Option<Vec<Uuid>>,
         max_rounds: Option<i32>,
         hand_size: Option<i32>,
     ) -> Result<Game, AppError> {
+        let trimmed_name = match name {
+            Some(n) => {
+                let trimmed = n.trim().to_string();
+                if trimmed.is_empty() {
+                    return Err(AppError::ValidationError("Game name cannot be empty".to_string()));
+                }
+                if trimmed.chars().count() > 100 {
+                    return Err(AppError::ValidationError("Game name cannot exceed 100 characters".to_string()));
+                }
+                Some(trimmed)
+            }
+            None => None,
+        };
+
         // Validate situation pack IDs exist if updating them
         if let Some(sit_pack_ids) = &selected_situation_pack_ids {
             for &pack_id in sit_pack_ids {
@@ -70,7 +85,7 @@ impl UpdateGameCommand {
 
         // Update games table
         self.repo
-            .update_game_settings(&mut tx, game_id, new_mode, new_max_rounds, new_hand_size)
+            .update_game_settings(&mut tx, game_id, trimmed_name.clone(), new_mode, new_max_rounds, new_hand_size)
             .await?;
 
         // Update selected situation packs if specified
@@ -104,6 +119,7 @@ impl UpdateGameCommand {
             new_version,
             "GameSettingsUpdated",
             json!({
+                "name": trimmed_name,
                 "mode": new_mode,
                 "max_rounds": new_max_rounds,
                 "hand_size": new_hand_size

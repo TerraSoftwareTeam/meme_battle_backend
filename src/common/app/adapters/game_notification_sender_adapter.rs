@@ -263,6 +263,7 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
         host_id: Uuid,
+        name: String,
         mode: String,
         max_rounds: i32,
         hand_size: i32,
@@ -272,6 +273,7 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         let payload = RealtimePayload::LobbyCreated(LobbyCreatedPayload {
             id: game_id,
             host_id,
+            name,
             mode,
             max_rounds,
             hand_size,

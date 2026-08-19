@@ -9,6 +9,9 @@ use crate::features::game::domain::model::{
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct GameDto {
     pub id: Uuid,
+    /// Название игрового лобби
+    #[schema(example = "Вечерняя битва мемов")]
+    pub name: String,
     pub mode: GameMode,
     pub status: GameStatus,
     pub version: i64,
@@ -18,6 +21,7 @@ impl From<Game> for GameDto {
     fn from(game: Game) -> Self {
         Self {
             id: game.id,
+            name: game.name,
             mode: game.mode,
             status: game.status,
             version: game.version,
@@ -29,6 +33,9 @@ impl From<Game> for GameDto {
 pub struct ActiveGameDto {
     pub id: Uuid,
     pub host_id: Uuid,
+    /// Название игрового лобби
+    #[schema(example = "Вечерняя битва мемов")]
+    pub name: String,
     pub mode: GameMode,
     pub max_rounds: i32,
     pub hand_size: i32,
@@ -41,6 +48,7 @@ impl From<ActiveGame> for ActiveGameDto {
         Self {
             id: game.id,
             host_id: game.host_id,
+            name: game.name,
             mode: game.mode,
             max_rounds: game.max_rounds,
             hand_size: game.hand_size,

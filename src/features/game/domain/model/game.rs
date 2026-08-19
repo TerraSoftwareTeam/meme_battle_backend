@@ -27,6 +27,7 @@ pub enum GameMode {
 pub struct Game {
     pub id: Uuid,
     pub host_id: Uuid,
+    pub name: String,
     pub mode: GameMode,
     pub status: GameStatus,
     /// Maximum number of rounds before the game ends.
@@ -143,6 +144,7 @@ impl GameAggregate {
 pub struct ActiveGame {
     pub id: Uuid,
     pub host_id: Uuid,
+    pub name: String,
     pub mode: GameMode,
     pub max_rounds: i32,
     pub hand_size: i32,

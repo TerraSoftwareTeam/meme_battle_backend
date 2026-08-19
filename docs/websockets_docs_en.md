@@ -78,6 +78,7 @@ All client WebSocket connections and channel subscriptions require authorization
 >       {
 >         "id": "d3b07384-d113-4956-a517-8828d18471a4",
 >         "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+>         "name": "Friday Night Memes",
 >         "mode": "situation_to_meme",
 >         "max_rounds": 3,
 >         "hand_size": 5,
@@ -330,6 +331,7 @@ All event notifications sent by the server are wrapped in a Centrifugo `push` co
 {
   "id": "d3b07384-d113-4956-a517-8828d18471a4",
   "host_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+  "name": "Friday Night Memes",
   "mode": "situation_to_meme",
   "max_rounds": 3,
   "hand_size": 5,

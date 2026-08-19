@@ -353,6 +353,7 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
         .post(format!("{}/games", base_url))
         .bearer_auth(&tokens[0])
         .json(&CreateGameRequest {
+            name: "Recovery Test Game".to_string(),
             mode: meme_battle_backend::features::game::GameMode::SituationToMeme,
             selected_situation_pack_ids: vec![sit_pack_id],
             selected_meme_pack_ids: vec![meme_pack_id],

@@ -32,6 +32,7 @@ impl CreateGameCommand {
     pub async fn execute(
         &self,
         creator_id: Uuid,
+        name: String,
         mode: GameMode,
         situation_pack_ids: Vec<Uuid>,
         meme_pack_ids: Vec<Uuid>,
@@ -39,6 +40,14 @@ impl CreateGameCommand {
         hand_size: i32,
         requested_handle: Option<String>,
     ) -> Result<Game, AppError> {
+        let trimmed_name = name.trim().to_string();
+        if trimmed_name.is_empty() {
+            return Err(AppError::ValidationError("Game name cannot be empty".to_string()));
+        }
+        if trimmed_name.chars().count() > 100 {
+            return Err(AppError::ValidationError("Game name cannot exceed 100 characters".to_string()));
+        }
+
         // Validate situation pack IDs exist
         for &pack_id in &situation_pack_ids {
             if self.repo.find_situation_pack(pack_id).await?.is_none() {
@@ -56,7 +65,7 @@ impl CreateGameCommand {
         let mut tx = self.repo.begin().await?;
 
         // 1. Create Game
-        let game = self.repo.create_game(&mut tx, creator_id, mode, max_rounds, hand_size).await?;
+        let game = self.repo.create_game(&mut tx, creator_id, trimmed_name, mode, max_rounds, hand_size).await?;
 
         // 2. Select Packs
         for pack_id in situation_pack_ids {
@@ -90,6 +99,7 @@ impl CreateGameCommand {
             "GameCreated",
             json!({
                 "host_id": creator_id,
+                "name": game.name,
                 "mode": game.mode
             }),
         )
@@ -101,7 +111,7 @@ impl CreateGameCommand {
         };
 
         self.notification_sender
-            .notify_lobby_created(&mut tx, game.id, creator_id, mode_str, max_rounds, hand_size, 1, game.created_at)
+            .notify_lobby_created(&mut tx, game.id, creator_id, game.name.clone(), mode_str, max_rounds, hand_size, 1, game.created_at)
             .await?;
 
         tx.commit().await?;

@@ -44,6 +44,7 @@ pub async fn create_game(
         .create_game
         .execute(
             user_id,
+            payload.name,
             payload.mode,
             payload.selected_situation_pack_ids,
             payload.selected_meme_pack_ids,
@@ -118,6 +119,7 @@ pub async fn update_game(
         .execute(
             user_id,
             game_id,
+            payload.name,
             payload.mode,
             payload.selected_situation_pack_ids,
             payload.selected_meme_pack_ids,

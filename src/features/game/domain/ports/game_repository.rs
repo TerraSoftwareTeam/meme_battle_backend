@@ -18,6 +18,11 @@ pub trait GameRepository: Send + Sync {
     async fn find_game(&self, game_id: Uuid) -> Result<Option<Game>, AppError>;
     async fn find_active_lobby_games(&self) -> Result<Vec<ActiveGame>, AppError>;
     async fn get_players(&self, game_id: Uuid) -> Result<Vec<GamePlayer>, AppError>;
+    async fn get_players_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<Vec<GamePlayer>, AppError>;
     async fn get_player_hand(&self, game_id: Uuid, user_id: Uuid) -> Result<Vec<RawGameCard>, AppError>;
     async fn get_player_hand_with_media(
         &self,
@@ -49,6 +54,7 @@ pub trait GameRepository: Send + Sync {
         &self,
         tx: &mut Transaction<'_, Postgres>,
         host_id: Uuid,
+        name: String,
         mode: GameMode,
         max_rounds: i32,
         hand_size: i32,
@@ -374,6 +380,7 @@ pub trait GameRepository: Send + Sync {
         &self,
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
+        name: Option<String>,
         mode: GameMode,
         max_rounds: i32,
         hand_size: i32,

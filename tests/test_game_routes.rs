@@ -314,6 +314,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
 
     // 5. Create Game
     let create_game_payload = CreateGameRequest {
+        name: "Route Test Game".to_string(),
         mode: GameMode::SituationToMeme,
         selected_situation_pack_ids: vec![sit_pack_id],
         selected_meme_pack_ids: vec![meme_pack_id],
@@ -590,8 +591,8 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     .await;
     assert_eq!(vote_status2, StatusCode::OK);
 
-    // Player 3 votes for Player 1's submission (round ends)
-    let (vote_status3, _) = send_request(
+    // Player 3 votes for Player 1's submission (round ends, Player 1 gets 2 votes → winner)
+    let (vote_status3, _vote3_bytes) = send_request(
         &app,
         Method::POST,
         &format!("/games/{}/vote", game_id),
@@ -603,7 +604,32 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     .await;
     assert_eq!(vote_status3, StatusCode::OK);
 
-    // Get final state
+    // ── Score correctness: verify winner's point was credited IMMEDIATELY ──────
+
+    // Voting: P1→sub2, P2→sub3, P3→sub1 → tally: sub1=1, sub2=1, sub3=1 → first-found wins (sub1 = user1)
+    // So user1 should have score = 1, others = 0 right after the LAST vote
+
+    // 1. DB-level: game_players must show score=1 for the winner
+    let db_players = sqlx::query("SELECT user_id, score FROM game_players WHERE game_id = $1 ORDER BY joined_at ASC")
+        .bind(game_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let total_db_score: i32 = db_players.iter().map(|r| r.get::<i32, _>("score")).sum();
+    assert_eq!(total_db_score, 1, "Exactly 1 point must be in DB immediately after the last vote (not deferred)");
+
+    // 2. DB-level: round winner is set
+    let round_db = sqlx::query("SELECT winner_user_id FROM game_rounds WHERE id = $1")
+        .bind(round_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(
+        round_db.get::<Option<Uuid>, _>("winner_user_id").is_some(),
+        "Round must have a winner_user_id set in DB immediately after voting completes"
+    );
+
+    // 3. GET /state response must reflect the updated score (not stale read)
     let (final_status, final_bytes) = send_request::<()>(
         &app,
         Method::GET,
@@ -617,8 +643,19 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         serde_json::from_slice(&final_bytes).unwrap();
     let final_state_data = final_state_dto.0.data.unwrap();
 
-    // Validate score increase
-    assert!(final_state_data.players.iter().any(|p| p.score > 0));
+    // Score in GET /state must already be updated (no next-round delay)
+    let total_api_score: i32 = final_state_data.players.iter().map(|p| p.score).sum();
+    assert_eq!(
+        total_api_score, 1,
+        "GET /state must return total score = 1 immediately after voting (score must not be deferred to next round)"
+    );
+
+    // The winner must have score = 1 specifically
+    let winner_api = final_state_data.players.iter().find(|p| p.score > 0);
+    assert!(winner_api.is_some(), "At least one player must have score > 0 after voting");
+    assert_eq!(winner_api.unwrap().score, 1, "Winner must have score = 1 exactly");
+
+
 
     // 11. Pack CRUD Details (Metadata modification & addition)
     // Update Pack details (Token 1)
@@ -1228,6 +1265,7 @@ async fn test_game_start_deterministic_and_precomputes() {
 
     // Create Game
     let create_game_payload = CreateGameRequest {
+        name: "Settings Test Game".to_string(),
         mode: GameMode::SituationToMeme,
         selected_situation_pack_ids: vec![sit_pack_id],
         selected_meme_pack_ids: vec![meme_pack_id],
@@ -1495,6 +1533,7 @@ async fn test_game_settings_update() {
 
     // Create game with max_rounds: 3, hand_size: 5
     let create_game_payload = CreateGameRequest {
+        name: "Full Flow Game".to_string(),
         mode: GameMode::SituationToMeme,
         selected_situation_pack_ids: vec![sit_pack_id],
         selected_meme_pack_ids: vec![meme_pack_id],
@@ -1520,6 +1559,7 @@ async fn test_game_settings_update() {
 
     // Test PATCH /games/{id} by guest 2 (non-host) -> should fail with 403 Forbidden
     let patch_payload = UpdateGameRequest {
+        name: Some("Updated Game Name".to_string()),
         mode: Some(GameMode::MemeToSituation),
         selected_situation_pack_ids: None,
         selected_meme_pack_ids: None,
@@ -1548,15 +1588,17 @@ async fn test_game_settings_update() {
     assert_eq!(spatch2, StatusCode::OK);
     let patch_dto: RestApiResponse<GameDto> = serde_json::from_slice(&bpatch2).unwrap();
     let patched_game = patch_dto.0.data.unwrap();
+    assert_eq!(patched_game.name, "Updated Game Name");
     assert_eq!(patched_game.mode, GameMode::MemeToSituation);
 
     // Verify database has updated settings
     let game_row =
-        sqlx::query("SELECT mode::TEXT AS mode, max_rounds, hand_size FROM games WHERE id = $1")
+        sqlx::query("SELECT name, mode::TEXT AS mode, max_rounds, hand_size FROM games WHERE id = $1")
             .bind(game_id)
             .fetch_one(&pool)
             .await
             .unwrap();
+    assert_eq!(game_row.get::<String, _>("name"), "Updated Game Name");
     assert_eq!(game_row.get::<String, _>("mode"), "meme_to_situation");
     assert_eq!(game_row.get::<i32, _>("max_rounds"), 5);
     assert_eq!(game_row.get::<i32, _>("hand_size"), 6);
@@ -1683,6 +1725,7 @@ async fn test_game_play_to_completion_deletes_locks() {
 
     // Create Game with max_rounds: 1, hand_size: 1
     let create_game_payload = CreateGameRequest {
+        name: "Timeout Game".to_string(),
         mode: GameMode::SituationToMeme,
         selected_situation_pack_ids: vec![sit_pack_id],
         selected_meme_pack_ids: vec![meme_pack_id],
@@ -2089,6 +2132,7 @@ async fn test_game_catalog_endpoint() {
 
     // Create Game 1
     let create_payload = CreateGameRequest {
+        name: "Active Catalog Game".to_string(),
         mode: GameMode::SituationToMeme,
         selected_situation_pack_ids: vec![sit_pack_id],
         selected_meme_pack_ids: vec![meme_pack_id],
@@ -2122,6 +2166,7 @@ async fn test_game_catalog_endpoint() {
         .find(|g| g.id == game1_id)
         .expect("Game 1 should be in the active games list");
     assert_eq!(our_game.players_count, 1);
+    assert_eq!(our_game.name, "Active Catalog Game");
 
     // Player 2 joins Game 1
     let (status_join, _) = send_request::<Value>(
@@ -2312,6 +2357,7 @@ async fn test_game_handle_conflicts() {
         "/games",
         Some(&token1),
         Some(&CreateGameRequest {
+            name: "Handle Conflict Game".to_string(),
             mode: GameMode::SituationToMeme,
             selected_situation_pack_ids: vec![sit_pack_id],
             selected_meme_pack_ids: vec![meme_pack_id],

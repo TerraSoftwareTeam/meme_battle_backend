@@ -146,6 +146,7 @@ mod tests {
         async fn find_game(&self, _game_id: Uuid) -> Result<Option<Game>, AppError> { todo!() }
         async fn find_active_lobby_games(&self) -> Result<Vec<ActiveGame>, AppError> { todo!() }
         async fn get_players(&self, _game_id: Uuid) -> Result<Vec<GamePlayer>, AppError> { todo!() }
+        async fn get_players_tx(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<Vec<GamePlayer>, AppError> { todo!() }
         async fn get_player_hand(&self, _game_id: Uuid, _user_id: Uuid) -> Result<Vec<RawGameCard>, AppError> { todo!() }
         async fn get_player_hand_with_media(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid) -> Result<Vec<GamePlayerHandCardWithMedia>, AppError> { todo!() }
         async fn get_current_round(&self, _game_id: Uuid) -> Result<Option<GameRound>, AppError> { todo!() }
@@ -156,7 +157,7 @@ mod tests {
         async fn get_submission_by_id(&self, _submission_id: Uuid) -> Result<Option<RoundSubmission>, AppError> { todo!() }
         async fn get_players_with_submissions(&self, _game_id: Uuid, _round_id: Option<Uuid>) -> Result<Vec<PlayerSubmissionState>, AppError> { todo!() }
         async fn begin(&self) -> Result<Transaction<'static, Postgres>, AppError> { todo!() }
-        async fn create_game(&self, _tx: &mut Transaction<'_, Postgres>, _host_id: Uuid, _mode: GameMode, _max_rounds: i32, _hand_size: i32) -> Result<Game, AppError> { todo!() }
+        async fn create_game(&self, _tx: &mut Transaction<'_, Postgres>, _host_id: Uuid, _name: String, _mode: GameMode, _max_rounds: i32, _hand_size: i32) -> Result<Game, AppError> { todo!() }
         async fn add_selected_situation_pack(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _pack_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn add_selected_meme_pack(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _pack_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn find_game_for_update(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<Option<Game>, AppError> { todo!() }
@@ -210,7 +211,7 @@ mod tests {
         async fn insert_player_reserve(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _draw_order: i32, _meme_id: Option<Uuid>, _situation_id: Option<Uuid>) -> Result<(), AppError> { todo!() }
         async fn insert_content_lock(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _meme_id: Option<Uuid>, _situation_id: Option<Uuid>) -> Result<(), AppError> { todo!() }
         async fn draw_reserve_card(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _draw_order: i32) -> Result<(), AppError> { todo!() }
-        async fn update_game_settings(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _mode: GameMode, _max_rounds: i32, _hand_size: i32) -> Result<(), AppError> { todo!() }
+        async fn update_game_settings(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _name: Option<String>, _mode: GameMode, _max_rounds: i32, _hand_size: i32) -> Result<(), AppError> { todo!() }
         async fn clear_selected_situation_packs(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn clear_selected_meme_packs(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn delete_game_content_locks(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { todo!() }
@@ -235,7 +236,7 @@ mod tests {
         async fn notify_vote_received(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _round_id: Uuid, _voter_id: Uuid, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_round_finished(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _round_id: Uuid, _round_number: i32, _winner_user_id: Uuid, _scoreboard: Vec<(Uuid, i32)>, _round_scoreboard: Vec<(Uuid, i32)>, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_game_finished(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _winner_user_id: Uuid, _scoreboard: Vec<(Uuid, i32)>, _version: i64) -> Result<(), AppError> { todo!() }
-        async fn notify_lobby_created(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _host_id: Uuid, _mode: String, _max_rounds: i32, _hand_size: i32, _players_count: i32, _created_at: DateTime<Utc>) -> Result<(), AppError> { Ok(()) }
+        async fn notify_lobby_created(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _host_id: Uuid, _name: String, _mode: String, _max_rounds: i32, _hand_size: i32, _players_count: i32, _created_at: DateTime<Utc>) -> Result<(), AppError> { Ok(()) }
         async fn notify_lobby_updated(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _players_count: i32) -> Result<(), AppError> { Ok(()) }
         async fn notify_lobby_removed(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { Ok(()) }
     }

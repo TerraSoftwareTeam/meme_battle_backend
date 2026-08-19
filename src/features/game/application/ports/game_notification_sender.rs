@@ -113,6 +113,7 @@ pub trait GameNotificationSender: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
         host_id: Uuid,
+        name: String,
         mode: String,
         max_rounds: i32,
         hand_size: i32,

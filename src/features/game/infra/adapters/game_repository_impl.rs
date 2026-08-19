@@ -32,7 +32,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_game(&self, game_id: Uuid) -> Result<Option<Game>, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
-            SELECT id, host_id, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
+            SELECT id, host_id, name, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             FROM games
             WHERE id = $1
             "#,
@@ -47,7 +47,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_active_lobby_games(&self) -> Result<Vec<ActiveGame>, AppError> {
         let games = sqlx::query_as::<_, ActiveGame>(
             r#"
-            SELECT g.id, g.host_id, g.mode, g.max_rounds, g.hand_size, g.created_at,
+            SELECT g.id, g.host_id, g.name, g.mode, g.max_rounds, g.hand_size, g.created_at,
                    COUNT(gp.user_id)::int as players_count
             FROM games g
             LEFT JOIN game_players gp ON g.id = gp.game_id
@@ -73,6 +73,26 @@ impl GameRepository for GameRepositoryImpl {
         )
         .bind(game_id)
         .fetch_all(&self.pool)
+        .await?;
+
+        Ok(players)
+    }
+
+    async fn get_players_tx(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<Vec<GamePlayer>, AppError> {
+        let players = sqlx::query_as::<_, GamePlayer>(
+            r#"
+            SELECT game_id, user_id, score, is_ready, handle, joined_at
+            FROM game_players
+            WHERE game_id = $1
+            ORDER BY joined_at ASC
+            "#,
+        )
+        .bind(game_id)
+        .fetch_all(&mut **tx)
         .await?;
 
         Ok(players)
@@ -372,18 +392,20 @@ impl GameRepository for GameRepositoryImpl {
         &self,
         tx: &mut Transaction<'_, Postgres>,
         host_id: Uuid,
+        name: String,
         mode: GameMode,
         max_rounds: i32,
         hand_size: i32,
     ) -> Result<Game, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
-            INSERT INTO games (host_id, mode, max_rounds, hand_size, status, version)
-            VALUES ($1, $2, $3, $4, 'lobby', 1)
-            RETURNING id, host_id, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
+            INSERT INTO games (host_id, name, mode, max_rounds, hand_size, status, version)
+            VALUES ($1, $2, $3, $4, $5, 'lobby', 1)
+            RETURNING id, host_id, name, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             "#,
         )
         .bind(host_id)
+        .bind(name)
         .bind(mode)
         .bind(max_rounds)
         .bind(hand_size)
@@ -442,7 +464,7 @@ impl GameRepository for GameRepositoryImpl {
     ) -> Result<Option<Game>, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
-            SELECT id, host_id, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
+            SELECT id, host_id, name, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             FROM games
             WHERE id = $1
             FOR UPDATE
@@ -1586,6 +1608,7 @@ impl GameRepository for GameRepositoryImpl {
         &self,
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
+        name: Option<String>,
         mode: GameMode,
         max_rounds: i32,
         hand_size: i32,
@@ -1593,11 +1616,12 @@ impl GameRepository for GameRepositoryImpl {
         sqlx::query(
             r#"
             UPDATE games
-            SET mode = $2, max_rounds = $3, hand_size = $4
+            SET name = COALESCE($2, name), mode = $3, max_rounds = $4, hand_size = $5
             WHERE id = $1
             "#,
         )
         .bind(game_id)
+        .bind(name)
         .bind(mode)
         .bind(max_rounds)
         .bind(hand_size)

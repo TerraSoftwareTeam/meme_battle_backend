@@ -86,6 +86,7 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
 
     // 6. Create Game with first player
     let create_game_payload = json!({
+        "name": "WS Test Game",
         "mode": "situation_to_meme",
         "selected_situation_pack_ids": Vec::<Uuid>::new(),
         "selected_meme_pack_ids": Vec::<Uuid>::new(),
@@ -306,6 +307,7 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
 
     // Create a game with Player 1 (Player 2 is NOT joined yet)
     let create_game_payload = json!({
+        "name": "WS Token Test Game",
         "mode": "situation_to_meme",
         "selected_situation_pack_ids": Vec::<Uuid>::new(),
         "selected_meme_pack_ids": Vec::<Uuid>::new(),
@@ -649,6 +651,7 @@ async fn test_lobbies_realtime_websocket_updates() {
 
     // 9. Create Game with Player 1 (Trigger lobby_created)
     let create_game_payload = json!({
+        "name": "Lobby WS Test Game",
         "mode": "situation_to_meme",
         "selected_situation_pack_ids": vec![sit_pack_id],
         "selected_meme_pack_ids": vec![meme_pack_id],
@@ -695,6 +698,10 @@ async fn test_lobbies_realtime_websocket_updates() {
                                     assert_eq!(
                                         payload.get("players_count").unwrap().as_i64(),
                                         Some(1)
+                                    );
+                                    assert_eq!(
+                                        payload.get("name").unwrap().as_str(),
+                                        Some("Lobby WS Test Game")
                                     );
                                     received_created = true;
                                     break;

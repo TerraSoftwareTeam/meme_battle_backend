@@ -183,7 +183,7 @@ impl VoteCardCommand {
             }
 
             // Fetch fresh scores for the event payload
-            let updated_players = self.repo.get_players(game_id).await?;
+            let updated_players = self.repo.get_players_tx(&mut tx, game_id).await?;
             let scores: Vec<(Uuid, i32)> = updated_players
                 .iter()
                 .map(|p| (p.user_id, p.score))
@@ -211,10 +211,7 @@ impl VoteCardCommand {
 
             // 2d. If this was the last round → emit GameFinished
             if is_last_round {
-                let final_scores: Vec<(Uuid, i32)> = updated_players
-                    .iter()
-                    .map(|p| (p.user_id, p.score))
-                    .collect();
+                let final_scores = scores.clone();
 
                 events.push(GameEvent::GameFinished {
                     final_scores: final_scores.clone(),
@@ -337,7 +334,7 @@ impl VoteCardCommand {
                     }
                 }
                 GameEvent::GameFinished { final_scores } => {
-                    let updated_players = self.repo.get_players(game_id).await?;
+                    let updated_players = self.repo.get_players_tx(&mut tx, game_id).await?;
                     let winner_user_id = updated_players
                         .iter()
                         .max_by_key(|p| p.score)

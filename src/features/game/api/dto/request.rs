@@ -15,6 +15,9 @@ fn default_hand_size() -> i32 {
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct CreateGameRequest {
+    /// Название игрового лобби
+    #[schema(example = "Вечерняя битва мемов")]
+    pub name: String,
     pub mode: GameMode,
     #[serde(rename = "selected_situation_pack_ids", alias = "situation_pack_ids")]
     pub selected_situation_pack_ids: Vec<Uuid>,
@@ -31,6 +34,9 @@ pub struct CreateGameRequest {
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct UpdateGameRequest {
+    /// Новое название игрового лобби
+    #[schema(example = "Новое название лобби")]
+    pub name: Option<String>,
     pub mode: Option<GameMode>,
     #[serde(default, rename = "selected_situation_pack_ids", alias = "situation_pack_ids")]
     pub selected_situation_pack_ids: Option<Vec<Uuid>>,

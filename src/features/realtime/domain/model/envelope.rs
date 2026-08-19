@@ -162,6 +162,7 @@ pub struct SyncRequiredPayload {
 pub struct LobbyCreatedPayload {
     pub id: Uuid,
     pub host_id: Uuid,
+    pub name: String,
     pub mode: String,
     pub max_rounds: i32,
     pub hand_size: i32,
