@@ -288,7 +288,7 @@ impl GameRepository for GameRepositoryImpl {
             SELECT pm.id
             FROM pack_memes pm
             JOIN game_selected_meme_packs gsmp ON pm.pack_id = gsmp.pack_id
-            WHERE gsmp.game_id = $1
+            WHERE gsmp.game_id = $1 AND pm.is_active = true
             "#,
         )
         .bind(game_id)
@@ -304,7 +304,7 @@ impl GameRepository for GameRepositoryImpl {
             SELECT ps.id
             FROM pack_situations ps
             JOIN game_selected_situation_packs gssp ON ps.pack_id = gssp.pack_id
-            WHERE gssp.game_id = $1
+            WHERE gssp.game_id = $1 AND ps.is_active = true
             "#,
         )
         .bind(game_id)
@@ -1184,9 +1184,9 @@ impl GameRepository for GameRepositoryImpl {
     async fn get_pack_memes_list(&self, pack_id: Uuid) -> Result<Vec<PackMeme>, AppError> {
         let memes = sqlx::query_as::<_, PackMeme>(
             r#"
-            SELECT id, pack_id, media_id
+            SELECT id, pack_id, media_id, content_hash, is_active
             FROM pack_memes
-            WHERE pack_id = $1
+            WHERE pack_id = $1 AND is_active = true
             ORDER BY id ASC
             "#,
         )
@@ -1243,7 +1243,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_pack_meme_by_id(&self, meme_id: Uuid) -> Result<Option<PackMeme>, AppError> {
         let meme = sqlx::query_as::<_, PackMeme>(
             r#"
-            SELECT id, pack_id, media_id
+            SELECT id, pack_id, media_id, content_hash, is_active
             FROM pack_memes
             WHERE id = $1
             "#,
@@ -1381,9 +1381,9 @@ impl GameRepository for GameRepositoryImpl {
     async fn get_pack_situations_list(&self, pack_id: Uuid) -> Result<Vec<PackSituation>, AppError> {
         let situations = sqlx::query_as::<_, PackSituation>(
             r#"
-            SELECT id, pack_id, prompt_text
+            SELECT id, pack_id, prompt_text, content_hash, is_active
             FROM pack_situations
-            WHERE pack_id = $1
+            WHERE pack_id = $1 AND is_active = true
             ORDER BY id ASC
             "#,
         )
@@ -1440,7 +1440,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_pack_situation_by_id(&self, situation_id: Uuid) -> Result<Option<PackSituation>, AppError> {
         let sit = sqlx::query_as::<_, PackSituation>(
             r#"
-            SELECT id, pack_id, prompt_text
+            SELECT id, pack_id, prompt_text, content_hash, is_active
             FROM pack_situations
             WHERE id = $1
             "#,

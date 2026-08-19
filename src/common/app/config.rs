@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::time::sleep;
 use tracing::{error, info, warn};
+use uuid::Uuid;
 
 /// Config is a struct that holds the configuration for the application.
 #[derive(Clone, Debug)]
@@ -20,6 +21,7 @@ pub struct Config {
     pub hackclub_cdn_api_key: Option<String>,
 
     pub admin_user_ids: Vec<String>,
+    pub default_admin_user_id: Uuid,
     pub secret_seed_key: String,
 
     pub centrifugo_api_url: String,
@@ -60,6 +62,10 @@ impl Config {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect(),
+            default_admin_user_id: env::var("DEFAULT_ADMIN_USER_ID")
+                .ok()
+                .and_then(|val| Uuid::parse_str(&val).ok())
+                .unwrap_or_else(|| Uuid::from_u128(1)),
             secret_seed_key: required_env("SECRET_SEED_KEY")?,
 
             centrifugo_api_url: env::var("CENTRIFUGO_API_URL")

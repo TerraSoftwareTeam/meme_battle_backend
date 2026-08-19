@@ -1,0 +1,12 @@
+{
+  "pack_id": "00000000-0000-0000-0000-000000000012",
+  "name": "Official Pack: Classic Global Memes (EN)",
+  "description": "Timeless global internet meme collection for Meme Battle",
+  "language_code": "en",
+  "safety_level": "family_friendly",
+  "is_public": true,
+  "items": [
+    { "file": "assets/cat.png" },
+    { "file": "assets/dog.png" }
+  ]
+}

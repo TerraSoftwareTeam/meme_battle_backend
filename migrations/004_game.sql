@@ -21,8 +21,12 @@ CREATE TABLE pack_situations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pack_id UUID NOT NULL REFERENCES situation_packs(id) ON DELETE CASCADE,
     prompt_text TEXT NOT NULL,
+    content_hash VARCHAR(64),
+    is_active BOOLEAN NOT NULL DEFAULT true,
     CONSTRAINT uq_pack_situations_pack_prompt UNIQUE (pack_id, prompt_text)
 );
+CREATE INDEX idx_pack_situations_pack_hash ON pack_situations(pack_id, content_hash);
+CREATE INDEX idx_pack_situations_pack_active ON pack_situations(pack_id, is_active);
 
 CREATE TABLE meme_packs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -39,13 +43,18 @@ CREATE TABLE pack_memes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     pack_id UUID NOT NULL REFERENCES meme_packs(id) ON DELETE CASCADE,
     media_id BIGINT REFERENCES media_assets(id) ON DELETE CASCADE,
+    content_hash VARCHAR(64),
+    is_active BOOLEAN NOT NULL DEFAULT true,
     CONSTRAINT uq_pack_memes_pack_media UNIQUE (pack_id, media_id)
 );
+CREATE INDEX idx_pack_memes_pack_hash ON pack_memes(pack_id, content_hash);
+CREATE INDEX idx_pack_memes_pack_active ON pack_memes(pack_id, is_active);
 
 -- 3. GAME SESSIONS (AGGREGATES)
 CREATE TABLE games (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     host_id UUID NOT NULL REFERENCES users(id),
+    name VARCHAR(100) NOT NULL DEFAULT 'Game',
     mode game_mode NOT NULL DEFAULT 'situation_to_meme',
     status game_status NOT NULL DEFAULT 'lobby',
     max_rounds INT NOT NULL DEFAULT 3,
@@ -151,7 +160,7 @@ CREATE TABLE round_votes (
     PRIMARY KEY (round_id, voter_id)
 );
 
--- 5. EVENT SOURCING AND OUTBOX
+-- 5. EVENT SOURCING
 CREATE TABLE game_events (
     id UUID PRIMARY KEY,
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -161,12 +170,5 @@ CREATE TABLE game_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- Optimistic Concurrency Control: one event per version slot per game
     CONSTRAINT uq_game_events_game_version UNIQUE (game_id, version)
-);
-
-CREATE TABLE centrifugo_outbox (
-    id BIGSERIAL PRIMARY KEY,
-    method TEXT NOT NULL,
-    payload JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

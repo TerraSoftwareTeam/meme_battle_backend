@@ -25,6 +25,7 @@ services:
       ARGON2_SECRET_KEY: ${ARGON2_SECRET_KEY:-change-me-in-local-env-argon2-secret-32}
       HMAC_SECRET_KEY: ${HMAC_SECRET_KEY:-change-me-in-local-env-hmac-secret-32}
       SECRET_SEED_KEY: ${SECRET_SEED_KEY}
+      DEFAULT_ADMIN_USER_ID: ${DEFAULT_ADMIN_USER_ID:-00000000-0000-0000-0000-000000000001}
       HACKCLUB_CDN_API_KEY: ${HACKCLUB_CDN_API_KEY}
       HACKCLUB_CDN_BASE_URL: ${HACKCLUB_CDN_BASE_URL:-https://cdn.hackclub.com}
       CENTRIFUGO_API_URL: ${CENTRIFUGO_API_URL:-http://centrifugo:8000/api}
@@ -36,6 +37,8 @@ services:
         condition: service_started
     ports:
       - "${APP_EXTERNAL_PORT:-8081}:8080"
+    volumes:
+      - ./seeds:/app/seeds:ro
     networks:
       - internal
     healthcheck:

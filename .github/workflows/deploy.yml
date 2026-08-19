@@ -3,13 +3,43 @@ name: Build and Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
 jobs:
+  # ─── 1. Detect Changes ────────────────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      seeds: ${{ steps.filter.outputs.seeds }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'src/**'
+              - 'Cargo.*'
+              - 'Dockerfile'
+              - 'migrations/**'
+              - 'centrifuge/**'
+              - 'observability/**'
+              - 'docker-compose.yml'
+              - '.github/workflows/deploy.yml'
+            seeds:
+              - 'seeds/**'
+
+  # ─── 2. Build Docker Image ───────────────────────────────────────────────────
   build:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -48,8 +78,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ─── 3. Deploy App ───────────────────────────────────────────────────────────
   deploy:
-    needs: build
+    needs: [changes, build]
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, hackclub]
     environment: production
     permissions:
@@ -84,6 +116,11 @@ jobs:
             cp -r observability /home/deployer/meme_battle_backend/observability
           fi
 
+          if [ -d seeds ]; then
+            rm -rf /home/deployer/meme_battle_backend/seeds
+            cp -r seeds /home/deployer/meme_battle_backend/seeds
+          fi
+
       - name: Debug deploy directory
         run: |
           ls -la /home/deployer/meme_battle_backend
@@ -116,6 +153,7 @@ jobs:
           GF_ADMIN_PASSWORD: ${{ secrets.GF_ADMIN_PASSWORD }}
           GRAFANA_EXTERNAL_PORT: ${{ vars.GRAFANA_EXTERNAL_PORT || '3000' }}
           MAX_FILE_SIZE_MB: ${{ vars.MAX_FILE_SIZE_MB || '35' }}
+          DEFAULT_ADMIN_USER_ID: ${{ vars.DEFAULT_ADMIN_USER_ID || '00000000-0000-0000-0000-000000000001' }}
         run: |
           # Verification of Required Secrets
           : "${POSTGRES_USER:?POSTGRES_USER secret is required}"
@@ -142,6 +180,7 @@ jobs:
           HMAC_SECRET_KEY=${HMAC_SECRET_KEY}
           ARGON2_SECRET_KEY=${ARGON2_SECRET_KEY}
           SECRET_SEED_KEY=${SECRET_SEED_KEY}
+          DEFAULT_ADMIN_USER_ID=${DEFAULT_ADMIN_USER_ID}
           HACKCLUB_CDN_API_KEY=${HACKCLUB_CDN_API_KEY}
 
           APP_EXTERNAL_PORT=${APP_EXTERNAL_PORT}
@@ -180,3 +219,30 @@ jobs:
 
       - name: Restart app
         run: docker compose -f /home/deployer/meme_battle_backend/docker-compose.yml up -d
+
+  # ─── 4. Apply Seeds ──────────────────────────────────────────────────────────
+  apply-seeds:
+    needs: [changes, deploy]
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      (needs.changes.outputs.seeds == 'true' || github.event_name == 'workflow_dispatch')
+    runs-on: [self-hosted, hackclub]
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync seeds to runner host
+        run: |
+          mkdir -p /home/deployer/meme_battle_backend/seeds
+          rm -rf /home/deployer/meme_battle_backend/seeds/*
+          cp -r seeds/* /home/deployer/meme_battle_backend/seeds/
+
+      - name: Run Seeder in Container
+        working-directory: /home/deployer/meme_battle_backend
+        run: |
+          docker compose exec -T app /app/meme_battle_backend seed --dir /app/seeds || \
+          docker compose run --rm -v /home/deployer/meme_battle_backend/seeds:/app/seeds:ro app /app/meme_battle_backend seed --dir /app/seeds

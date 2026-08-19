@@ -1,0 +1,12 @@
+{
+  "pack_id": "00000000-0000-0000-0000-000000000011",
+  "name": "Официальный пак: Классические мемы (RU)",
+  "description": "Золотая коллекция мемов для Meme Battle",
+  "language_code": "ru",
+  "safety_level": "family_friendly",
+  "is_public": true,
+  "items": [
+    { "file": "assets/cat.png" },
+    { "file": "assets/dog.png" }
+  ]
+}

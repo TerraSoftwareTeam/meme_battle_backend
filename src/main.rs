@@ -56,6 +56,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Err(err.into());
     }
 
+    // CLI Subcommand: Seeding
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "seed" || arg == "--seed" || arg.starts_with("--seed-dir")) {
+        let seeds_dir_str = args
+            .windows(2)
+            .find_map(|window| {
+                if window[0] == "--seed-dir" || window[0] == "--dir" {
+                    Some(window[1].clone())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                args.iter().find_map(|arg| {
+                    if let Some(stripped) = arg.strip_prefix("--seed-dir=") {
+                        Some(stripped.to_string())
+                    } else if let Some(stripped) = arg.strip_prefix("--dir=") {
+                        Some(stripped.to_string())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or_else(|| "seeds".to_string());
+
+        let seeds_path = std::path::PathBuf::from(&seeds_dir_str);
+        info!("Executing database seeding task from '{}'...", seeds_path.display());
+        let seeder = meme_battle_backend::common::seeder::Seeder::new(pool.clone(), config.clone());
+        if let Err(err) = seeder.sync_all(&seeds_path).await {
+            error!(error = %err, "Seeding failed");
+            return Err(err.into());
+        }
+        info!("Seeding task finished successfully");
+        return Ok(());
+    }
+
     let state = build_app_state(pool.clone(), config.clone());
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);

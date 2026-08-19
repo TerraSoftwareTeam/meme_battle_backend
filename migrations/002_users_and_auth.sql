@@ -25,3 +25,8 @@ CREATE TABLE refresh_tokens (
 );
 
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+
+-- System / Admin user for official seeded packs
+INSERT INTO users (id, username, role)
+VALUES ('00000000-0000-0000-0000-000000000001', 'admin', 'admin')
+ON CONFLICT (id) DO NOTHING;

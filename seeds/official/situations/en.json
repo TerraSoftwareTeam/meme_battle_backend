@@ -1,0 +1,17 @@
+{
+  "pack_id": "00000000-0000-0000-0000-000000000002",
+  "name": "Official Pack: Everyday Situations (EN)",
+  "description": "Classic everyday and developer situations for Meme Battle",
+  "language_code": "en",
+  "safety_level": "family_friendly",
+  "is_public": true,
+  "items": [
+    { "prompt_text": "When the code compiles on the very first try" },
+    { "prompt_text": "Production went down on Friday at 6 PM" },
+    { "prompt_text": "Looking at code you wrote 3 years ago" },
+    { "prompt_text": "When the tech lead says 'this is a 5-minute task'" },
+    { "prompt_text": "Forgot to pull before push and got 50 merge conflicts" },
+    { "prompt_text": "Fixed a critical bug with a single print statement" },
+    { "prompt_text": "QA finds 20 bugs in a feature you worked on for a month" }
+  ]
+}

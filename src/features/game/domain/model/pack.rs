@@ -41,6 +41,8 @@ pub struct PackMeme {
     pub id: Uuid,
     pub pack_id: Uuid,
     pub media_id: Option<i64>,
+    pub content_hash: Option<String>,
+    pub is_active: bool,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize, utoipa::ToSchema)]
@@ -68,4 +70,6 @@ pub struct PackSituation {
     pub id: Uuid,
     pub pack_id: Uuid,
     pub prompt_text: String,
+    pub content_hash: Option<String>,
+    pub is_active: bool,
 }
