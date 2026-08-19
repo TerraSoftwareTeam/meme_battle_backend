@@ -7,12 +7,13 @@ use chrono::{DateTime, Utc};
 use crate::{
     common::http::error::AppError,
     features::game::domain::{
-        ports::GameRepository,
         model::{
-            Game, ActiveGame, RawGameCard, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
-            PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel, LanguageCode,
-            MemePack, PackMeme, SituationPack, PackSituation, GamePlayerHandCardWithMedia,
+            ActiveGame, ContentSafetyLevel, Game, GameMode, GamePlayer, GamePlayerHandCard,
+            GamePlayerHandCardWithMedia, GameRound, GameStatus, LanguageCode, MemePack, PackMeme,
+            PackMemeReconcileState, PackSituation, PlayerSubmissionState, RawGameCard, RoundPhase,
+            RoundSubmission, SeedSyncStats, SituationPack,
         },
+        ports::GameRepository,
     },
 };
 
@@ -1137,7 +1138,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_meme_pack(&self, pack_id: Uuid) -> Result<Option<MemePack>, AppError> {
         let pack = sqlx::query_as::<_, MemePack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
             FROM meme_packs
             WHERE id = $1
             "#,
@@ -1152,7 +1153,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn list_meme_packs(&self, author_id: Uuid) -> Result<Vec<MemePack>, AppError> {
         let packs = sqlx::query_as::<_, MemePack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
             FROM meme_packs
             WHERE is_public = true OR author_id = $1
             ORDER BY created_at DESC
@@ -1168,7 +1169,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn list_user_meme_packs(&self, author_id: Uuid) -> Result<Vec<MemePack>, AppError> {
         let packs = sqlx::query_as::<_, MemePack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
             FROM meme_packs
             WHERE author_id = $1
             ORDER BY created_at DESC
@@ -1334,7 +1335,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_situation_pack(&self, pack_id: Uuid) -> Result<Option<SituationPack>, AppError> {
         let pack = sqlx::query_as::<_, SituationPack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
             FROM situation_packs
             WHERE id = $1
             "#,
@@ -1349,7 +1350,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn list_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError> {
         let packs = sqlx::query_as::<_, SituationPack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
             FROM situation_packs
             WHERE is_public = true OR author_id = $1
             ORDER BY created_at DESC
@@ -1365,7 +1366,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn list_user_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError> {
         let packs = sqlx::query_as::<_, SituationPack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
             FROM situation_packs
             WHERE author_id = $1
             ORDER BY created_at DESC
@@ -1802,5 +1803,311 @@ impl GameRepository for GameRepositoryImpl {
 
         Ok(round)
     }
+
+    async fn ensure_admin_user(&self, admin_id: Uuid, username: &str) -> Result<(), AppError> {
+        let exists = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)"
+        )
+        .bind(admin_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if !exists {
+            sqlx::query(
+                r#"
+                INSERT INTO users (id, username, role)
+                VALUES ($1, $2, 'admin')
+                ON CONFLICT (id) DO NOTHING
+                "#,
+            )
+            .bind(admin_id)
+            .bind(username)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn upsert_seed_situation_pack(
+        &self,
+        pack_id: Uuid,
+        author_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+        language_code: LanguageCode,
+        safety_level: ContentSafetyLevel,
+        is_public: bool,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO situation_packs (id, author_id, name, description, language_code, safety_level, is_public, is_official)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+            ON CONFLICT (id) DO UPDATE
+            SET name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                language_code = EXCLUDED.language_code,
+                safety_level = EXCLUDED.safety_level,
+                is_public = EXCLUDED.is_public,
+                is_official = true
+            "#,
+        )
+        .bind(pack_id)
+        .bind(author_id)
+        .bind(name)
+        .bind(description)
+        .bind(language_code)
+        .bind(safety_level)
+        .bind(is_public)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn sync_seed_situations(
+        &self,
+        pack_id: Uuid,
+        items: &[(String, String)],
+    ) -> Result<SeedSyncStats, AppError> {
+        #[derive(sqlx::FromRow)]
+        struct ExistingSituationRow {
+            id: Uuid,
+            prompt_text: String,
+            content_hash: Option<String>,
+            is_active: bool,
+        }
+
+        let existing_rows = sqlx::query_as::<_, ExistingSituationRow>(
+            r#"
+            SELECT id, prompt_text, content_hash, is_active
+            FROM pack_situations
+            WHERE pack_id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut existing_by_hash = std::collections::HashMap::new();
+        let mut existing_by_text = std::collections::HashMap::new();
+        for row in &existing_rows {
+            if let Some(ref hash) = row.content_hash {
+                existing_by_hash.insert(hash.clone(), row);
+            }
+            existing_by_text.insert(row.prompt_text.clone(), row);
+        }
+
+        let mut desired_hashes = std::collections::HashSet::new();
+        let mut stats = SeedSyncStats::default();
+
+        for (prompt_text, hash) in items {
+            if !desired_hashes.insert(hash.clone()) {
+                continue;
+            }
+
+            if let Some(existing) = existing_by_hash.get(hash) {
+                if !existing.is_active {
+                    sqlx::query(
+                        r#"
+                        UPDATE pack_situations
+                        SET is_active = true, prompt_text = $1
+                        WHERE id = $2
+                        "#,
+                    )
+                    .bind(prompt_text)
+                    .bind(existing.id)
+                    .execute(&self.pool)
+                    .await?;
+                    stats.reactivated += 1;
+                } else {
+                    stats.unchanged += 1;
+                }
+            } else if let Some(existing) = existing_by_text.get(prompt_text) {
+                sqlx::query(
+                    r#"
+                    UPDATE pack_situations
+                    SET content_hash = $1, is_active = true
+                    WHERE id = $2
+                    "#,
+                )
+                .bind(hash)
+                .bind(existing.id)
+                .execute(&self.pool)
+                .await?;
+                stats.reactivated += 1;
+            } else {
+                sqlx::query(
+                    r#"
+                    INSERT INTO pack_situations (pack_id, prompt_text, content_hash, is_active)
+                    VALUES ($1, $2, $3, true)
+                    ON CONFLICT (pack_id, prompt_text)
+                    DO UPDATE SET content_hash = EXCLUDED.content_hash, is_active = true
+                    "#,
+                )
+                .bind(pack_id)
+                .bind(prompt_text)
+                .bind(hash)
+                .execute(&self.pool)
+                .await?;
+                stats.inserted += 1;
+            }
+        }
+
+        for row in &existing_rows {
+            if row.is_active {
+                let is_still_desired = match &row.content_hash {
+                    Some(hash) => desired_hashes.contains(hash),
+                    None => false,
+                };
+
+                if !is_still_desired {
+                    sqlx::query(
+                        r#"
+                        UPDATE pack_situations
+                        SET is_active = false
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(row.id)
+                    .execute(&self.pool)
+                    .await?;
+                    stats.deactivated += 1;
+                }
+            }
+        }
+
+        Ok(stats)
+    }
+
+    async fn upsert_seed_meme_pack(
+        &self,
+        pack_id: Uuid,
+        author_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+        language_code: LanguageCode,
+        safety_level: ContentSafetyLevel,
+        is_public: bool,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO meme_packs (id, author_id, name, description, language_code, safety_level, is_public, is_official)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+            ON CONFLICT (id) DO UPDATE
+            SET name = EXCLUDED.name,
+                description = EXCLUDED.description,
+                language_code = EXCLUDED.language_code,
+                safety_level = EXCLUDED.safety_level,
+                is_public = EXCLUDED.is_public,
+                is_official = true
+            "#,
+        )
+        .bind(pack_id)
+        .bind(author_id)
+        .bind(name)
+        .bind(description)
+        .bind(language_code)
+        .bind(safety_level)
+        .bind(is_public)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn get_pack_memes_reconcile_state(
+        &self,
+        pack_id: Uuid,
+    ) -> Result<Vec<PackMemeReconcileState>, AppError> {
+        let rows = sqlx::query_as::<_, PackMemeReconcileState>(
+            r#"
+            SELECT id, media_id, content_hash, is_active
+            FROM pack_memes
+            WHERE pack_id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    async fn reactivate_pack_meme(&self, id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE pack_memes
+            SET is_active = true
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn insert_seed_pack_meme(
+        &self,
+        pack_id: Uuid,
+        media_id: i64,
+        content_hash: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO pack_memes (pack_id, media_id, content_hash, is_active)
+            VALUES ($1, $2, $3, true)
+            ON CONFLICT (pack_id, media_id)
+            DO UPDATE SET content_hash = EXCLUDED.content_hash, is_active = true
+            "#,
+        )
+        .bind(pack_id)
+        .bind(media_id)
+        .bind(content_hash)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn deactivate_removed_pack_memes(
+        &self,
+        pack_id: Uuid,
+        desired_hashes: &[String],
+    ) -> Result<usize, AppError> {
+        let desired_set: std::collections::HashSet<&str> =
+            desired_hashes.iter().map(|s| s.as_str()).collect();
+
+        let existing = self.get_pack_memes_reconcile_state(pack_id).await?;
+        let mut deactivated_count = 0;
+
+        for row in existing {
+            if row.is_active {
+                let is_desired = match &row.content_hash {
+                    Some(hash) => desired_set.contains(hash.as_str()),
+                    None => false,
+                };
+
+                if !is_desired {
+                    sqlx::query(
+                        r#"
+                        UPDATE pack_memes
+                        SET is_active = false
+                        WHERE id = $1
+                        "#,
+                    )
+                    .bind(row.id)
+                    .execute(&self.pool)
+                    .await?;
+                    deactivated_count += 1;
+                }
+            }
+        }
+
+        Ok(deactivated_count)
+    }
 }
+
 

@@ -132,6 +132,7 @@ pub struct MemePackDto {
     pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
+    pub is_official: bool,
     pub created_at: String,
 }
 
@@ -145,6 +146,7 @@ impl From<MemePack> for MemePackDto {
             language_code: p.language_code,
             safety_level: p.safety_level,
             is_public: p.is_public,
+            is_official: p.is_official,
             created_at: p.created_at.to_rfc3339(),
         }
     }
@@ -189,6 +191,7 @@ pub struct SituationPackDto {
     pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
+    pub is_official: bool,
     pub created_at: String,
 }
 
@@ -202,6 +205,7 @@ impl From<SituationPack> for SituationPackDto {
             language_code: p.language_code,
             safety_level: p.safety_level,
             is_public: p.is_public,
+            is_official: p.is_official,
             created_at: p.created_at.to_rfc3339(),
         }
     }

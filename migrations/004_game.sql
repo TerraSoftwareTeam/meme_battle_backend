@@ -14,8 +14,10 @@ CREATE TABLE situation_packs (
     language_code language_code NOT NULL,
     safety_level content_safety_level NOT NULL DEFAULT 'family_friendly',
     is_public BOOLEAN NOT NULL DEFAULT false,
+    is_official BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX idx_situation_packs_official ON situation_packs(is_official);
 
 CREATE TABLE pack_situations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -36,8 +38,10 @@ CREATE TABLE meme_packs (
     language_code language_code NOT NULL,
     safety_level content_safety_level NOT NULL DEFAULT 'family_friendly',
     is_public BOOLEAN NOT NULL DEFAULT false,
+    is_official BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX idx_meme_packs_official ON meme_packs(is_official);
 
 CREATE TABLE pack_memes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

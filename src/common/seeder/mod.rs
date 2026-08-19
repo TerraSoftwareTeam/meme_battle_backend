@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     common::{app::config::Config, http::error::AppError},
     features::{
-        game::{ContentSafetyLevel, LanguageCode},
+        game::{ContentSafetyLevel, GameRepository, GameRepositoryImpl, LanguageCode},
         media::{
             CreateMediaAsset, FileStorage, HackClubCdnStorage, MediaAsset, MediaProvider,
             MediaRepository, PostgresMediaRepository, StoredFile, UploadFile,
@@ -89,10 +89,10 @@ fn default_is_public() -> bool {
 }
 
 pub struct Seeder {
-    pool: PgPool,
     config: Config,
     storage: Arc<dyn FileStorage>,
     media_repository: Arc<dyn MediaRepository>,
+    game_repository: Arc<dyn GameRepository>,
 }
 
 impl Seeder {
@@ -102,47 +102,42 @@ impl Seeder {
             config.hackclub_cdn_api_key.clone(),
         ));
         let media_repository = Arc::new(PostgresMediaRepository::new(pool.clone()));
+        let game_repository = Arc::new(GameRepositoryImpl::new(pool));
 
         Self {
-            pool,
             config,
             storage,
             media_repository,
+            game_repository,
+        }
+    }
+
+    pub fn with_dependencies(
+        config: Config,
+        storage: Arc<dyn FileStorage>,
+        media_repository: Arc<dyn MediaRepository>,
+        game_repository: Arc<dyn GameRepository>,
+    ) -> Self {
+        Self {
+            config,
+            storage,
+            media_repository,
+            game_repository,
         }
     }
 
     /// Ensure default admin user exists
     pub async fn ensure_admin_user(&self) -> Result<(), AppError> {
         let admin_id = self.config.default_admin_user_id;
+        let username = if admin_id == Uuid::from_u128(1) {
+            "admin".to_string()
+        } else {
+            format!("admin_{}", &admin_id.to_string()[..8])
+        };
 
-        let exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)"
-        )
-        .bind(admin_id)
-        .fetch_one(&self.pool)
-        .await?;
-
-        if !exists {
-            let username = if admin_id == Uuid::from_u128(1) {
-                "admin".to_string()
-            } else {
-                format!("admin_{}", &admin_id.to_string()[..8])
-            };
-
-            sqlx::query(
-                r#"
-                INSERT INTO users (id, username, role)
-                VALUES ($1, $2, 'admin')
-                ON CONFLICT (id) DO NOTHING
-                "#,
-            )
-            .bind(admin_id)
-            .bind(username)
-            .execute(&self.pool)
-            .await?;
-        }
-
-        Ok(())
+        self.game_repository
+            .ensure_admin_user(admin_id, &username)
+            .await
     }
 
     /// Run full sync for all seeds found in seeds_dir
@@ -230,157 +225,41 @@ impl Seeder {
             Uuid::new_v5(&Uuid::NAMESPACE_DNS, config.name.as_bytes())
         });
 
-        // 1. Upsert pack header
-        sqlx::query(
-            r#"
-            INSERT INTO situation_packs (id, author_id, name, description, language_code, safety_level, is_public)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (id) DO UPDATE
-            SET name = EXCLUDED.name,
-                description = EXCLUDED.description,
-                language_code = EXCLUDED.language_code,
-                safety_level = EXCLUDED.safety_level,
-                is_public = EXCLUDED.is_public
-            "#,
-        )
-        .bind(pack_id)
-        .bind(self.config.default_admin_user_id)
-        .bind(&config.name)
-        .bind(config.description.as_deref())
-        .bind(config.language_code)
-        .bind(config.safety_level)
-        .bind(config.is_public)
-        .execute(&self.pool)
-        .await?;
+        // 1. Upsert pack header via GameRepository
+        self.game_repository
+            .upsert_seed_situation_pack(
+                pack_id,
+                self.config.default_admin_user_id,
+                &config.name,
+                config.description.as_deref(),
+                config.language_code,
+                config.safety_level,
+                config.is_public,
+            )
+            .await?;
 
-        // 2. Fetch existing DB items for this pack
-        #[derive(sqlx::FromRow)]
-        #[allow(dead_code)]
-        struct ExistingSituationRow {
-            id: Uuid,
-            prompt_text: String,
-            content_hash: Option<String>,
-            is_active: bool,
-        }
-
-        let existing_rows = sqlx::query_as::<_, ExistingSituationRow>(
-            r#"
-            SELECT id, prompt_text, content_hash, is_active
-            FROM pack_situations
-            WHERE pack_id = $1
-            "#,
-        )
-        .bind(pack_id)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut existing_by_hash = std::collections::HashMap::new();
-        let mut existing_by_text = std::collections::HashMap::new();
-        for row in &existing_rows {
-            if let Some(ref hash) = row.content_hash {
-                existing_by_hash.insert(hash.clone(), row);
-            }
-            existing_by_text.insert(row.prompt_text.clone(), row);
-        }
-
-        let mut desired_hashes = HashSet::new();
-        let mut inserted_count = 0;
-        let mut reactivated_count = 0;
-        let mut unchanged_count = 0;
-
-        // 3. Process items from config
+        // 2. Prepare items with hashes
+        let mut items = Vec::new();
         for item in &config.items {
             let prompt_text = item.prompt_text().trim();
-            if prompt_text.is_empty() {
-                continue;
-            }
-
-            let hash = compute_text_hash(prompt_text);
-            if !desired_hashes.insert(hash.clone()) {
-                continue;
-            }
-
-            if let Some(existing) = existing_by_hash.get(&hash) {
-                if !existing.is_active {
-                    sqlx::query(
-                        r#"
-                        UPDATE pack_situations
-                        SET is_active = true, prompt_text = $1
-                        WHERE id = $2
-                        "#,
-                    )
-                    .bind(prompt_text)
-                    .bind(existing.id)
-                    .execute(&self.pool)
-                    .await?;
-                    reactivated_count += 1;
-                } else {
-                    unchanged_count += 1;
-                }
-            } else if let Some(existing) = existing_by_text.get(prompt_text) {
-                // Same prompt text but hash was missing or updated
-                sqlx::query(
-                    r#"
-                    UPDATE pack_situations
-                    SET content_hash = $1, is_active = true
-                    WHERE id = $2
-                    "#,
-                )
-                .bind(&hash)
-                .bind(existing.id)
-                .execute(&self.pool)
-                .await?;
-                reactivated_count += 1;
-            } else {
-                // Insert new item
-                sqlx::query(
-                    r#"
-                    INSERT INTO pack_situations (pack_id, prompt_text, content_hash, is_active)
-                    VALUES ($1, $2, $3, true)
-                    ON CONFLICT (pack_id, prompt_text)
-                    DO UPDATE SET content_hash = EXCLUDED.content_hash, is_active = true
-                    "#,
-                )
-                .bind(pack_id)
-                .bind(prompt_text)
-                .bind(&hash)
-                .execute(&self.pool)
-                .await?;
-                inserted_count += 1;
+            if !prompt_text.is_empty() {
+                let hash = compute_text_hash(prompt_text);
+                items.push((prompt_text.to_string(), hash));
             }
         }
 
-        // 4. Deactivate removed items
-        let mut deactivated_count = 0;
-        for row in &existing_rows {
-            if row.is_active {
-                let is_still_desired = match &row.content_hash {
-                    Some(hash) => desired_hashes.contains(hash),
-                    None => false,
-                };
-
-                if !is_still_desired {
-                    sqlx::query(
-                        r#"
-                        UPDATE pack_situations
-                        SET is_active = false
-                        WHERE id = $1
-                        "#,
-                    )
-                    .bind(row.id)
-                    .execute(&self.pool)
-                    .await?;
-                    deactivated_count += 1;
-                }
-            }
-        }
+        // 3. Sync items via GameRepository
+        let stats = self
+            .game_repository
+            .sync_seed_situations(pack_id, &items)
+            .await?;
 
         info!(
             pack_name = %config.name,
-            inserted = inserted_count,
-            reactivated = reactivated_count,
-            unchanged = unchanged_count,
-            deactivated = deactivated_count,
+            inserted = stats.inserted,
+            reactivated = stats.reactivated,
+            unchanged = stats.unchanged,
+            deactivated = stats.deactivated,
             "Situation pack synced successfully"
         );
 
@@ -400,49 +279,24 @@ impl Seeder {
             Uuid::new_v5(&Uuid::NAMESPACE_DNS, config.name.as_bytes())
         });
 
-        // 1. Upsert pack header
-        sqlx::query(
-            r#"
-            INSERT INTO meme_packs (id, author_id, name, description, language_code, safety_level, is_public)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (id) DO UPDATE
-            SET name = EXCLUDED.name,
-                description = EXCLUDED.description,
-                language_code = EXCLUDED.language_code,
-                safety_level = EXCLUDED.safety_level,
-                is_public = EXCLUDED.is_public
-            "#,
-        )
-        .bind(pack_id)
-        .bind(self.config.default_admin_user_id)
-        .bind(&config.name)
-        .bind(config.description.as_deref())
-        .bind(config.language_code)
-        .bind(config.safety_level)
-        .bind(config.is_public)
-        .execute(&self.pool)
-        .await?;
+        // 1. Upsert pack header via GameRepository
+        self.game_repository
+            .upsert_seed_meme_pack(
+                pack_id,
+                self.config.default_admin_user_id,
+                &config.name,
+                config.description.as_deref(),
+                config.language_code,
+                config.safety_level,
+                config.is_public,
+            )
+            .await?;
 
-        // 2. Fetch existing DB items for this pack
-        #[derive(sqlx::FromRow)]
-        #[allow(dead_code)]
-        struct ExistingMemeRow {
-            id: Uuid,
-            media_id: Option<i64>,
-            content_hash: Option<String>,
-            is_active: bool,
-        }
-
-        let existing_rows = sqlx::query_as::<_, ExistingMemeRow>(
-            r#"
-            SELECT id, media_id, content_hash, is_active
-            FROM pack_memes
-            WHERE pack_id = $1
-            "#,
-        )
-        .bind(pack_id)
-        .fetch_all(&self.pool)
-        .await?;
+        // 2. Fetch existing DB items for reconcile via GameRepository
+        let existing_rows = self
+            .game_repository
+            .get_pack_memes_reconcile_state(pack_id)
+            .await?;
 
         let mut existing_by_hash = std::collections::HashMap::new();
         for row in &existing_rows {
@@ -488,16 +342,7 @@ impl Seeder {
 
             if let Some(existing) = existing_by_hash.get(&hash) {
                 if !existing.is_active {
-                    sqlx::query(
-                        r#"
-                        UPDATE pack_memes
-                        SET is_active = true
-                        WHERE id = $1
-                        "#,
-                    )
-                    .bind(existing.id)
-                    .execute(&self.pool)
-                    .await?;
+                    self.game_repository.reactivate_pack_meme(existing.id).await?;
                     reactivated_count += 1;
                 } else {
                     unchanged_count += 1;
@@ -516,48 +361,20 @@ impl Seeder {
                     .upload_or_reuse_media(&file_name, &content_type, file_bytes, &hash)
                     .await?;
 
-                sqlx::query(
-                    r#"
-                    INSERT INTO pack_memes (pack_id, media_id, content_hash, is_active)
-                    VALUES ($1, $2, $3, true)
-                    ON CONFLICT (pack_id, media_id)
-                    DO UPDATE SET content_hash = EXCLUDED.content_hash, is_active = true
-                    "#,
-                )
-                .bind(pack_id)
-                .bind(media_asset.id)
-                .bind(&hash)
-                .execute(&self.pool)
-                .await?;
+                self.game_repository
+                    .insert_seed_pack_meme(pack_id, media_asset.id, &hash)
+                    .await?;
 
                 inserted_count += 1;
             }
         }
 
-        // 4. Deactivate removed items
-        let mut deactivated_count = 0;
-        for row in &existing_rows {
-            if row.is_active {
-                let is_still_desired = match &row.content_hash {
-                    Some(hash) => desired_hashes.contains(hash),
-                    None => false,
-                };
-
-                if !is_still_desired {
-                    sqlx::query(
-                        r#"
-                        UPDATE pack_memes
-                        SET is_active = false
-                        WHERE id = $1
-                        "#,
-                    )
-                    .bind(row.id)
-                    .execute(&self.pool)
-                    .await?;
-                    deactivated_count += 1;
-                }
-            }
-        }
+        // 4. Deactivate removed items via GameRepository
+        let desired_hashes_vec: Vec<String> = desired_hashes.into_iter().collect();
+        let deactivated_count = self
+            .game_repository
+            .deactivate_removed_pack_memes(pack_id, &desired_hashes_vec)
+            .await?;
 
         info!(
             pack_name = %config.name,
@@ -607,17 +424,10 @@ impl Seeder {
             })
             .await?;
 
-        // Mark as attached and public
-        sqlx::query(
-            r#"
-            UPDATE media_assets
-            SET status = 'attached', visibility = 'public'
-            WHERE id = $1
-            "#,
-        )
-        .bind(media_asset.id)
-        .execute(&self.pool)
-        .await?;
+        // Mark as attached via MediaRepository
+        self.media_repository
+            .mark_attached(&[media_asset.id])
+            .await?;
 
         Ok(media_asset)
     }

@@ -495,4 +495,106 @@ async fn test_seeder_custom_admin_user_id() {
     let _ = fs::remove_dir_all(temp_root);
 }
 
+#[tokio::test]
+async fn test_seeder_is_official_flag_on_official_and_custom_packs() {
+    dotenvy::dotenv().ok();
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let config = Config::from_env().unwrap();
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .min_connections(1)
+        .connect(&config.database_url)
+        .await
+        .unwrap();
+    run_database_migrations(&pool).await.unwrap();
+
+    let repo = GameRepositoryImpl::new(pool.clone());
+    let seeder = Seeder::new(pool.clone(), config);
+
+    let temp_root = std::env::temp_dir().join(format!("meme_test_seeds_{}", Uuid::new_v4()));
+    let situations_dir = temp_root.join("official").join("situations");
+    let memes_dir = temp_root.join("official").join("memes");
+    let assets_dir = memes_dir.join("assets");
+    fs::create_dir_all(&situations_dir).unwrap();
+    fs::create_dir_all(&assets_dir).unwrap();
+
+    let official_sit_pack_id = Uuid::new_v4();
+    let official_meme_pack_id = Uuid::new_v4();
+
+    let sit_json = format!(r#"{{
+        "pack_id": "{}",
+        "name": "Official Situations",
+        "language_code": "en",
+        "items": ["Situation Official 1"]
+    }}"#, official_sit_pack_id);
+    fs::write(situations_dir.join("en.json"), sit_json).unwrap();
+
+    fs::write(assets_dir.join("sample.png"), b"sample png data").unwrap();
+    let meme_json = format!(r#"{{
+        "pack_id": "{}",
+        "name": "Official Memes",
+        "language_code": "en",
+        "items": ["assets/sample.png"]
+    }}"#, official_meme_pack_id);
+    fs::write(memes_dir.join("en.json"), meme_json).unwrap();
+
+    // 1. Sync official packs via seeder
+    seeder.sync_all(&temp_root).await.unwrap();
+
+    // 2. Verify official packs have is_official = true
+    let sit_pack = repo.find_situation_pack(official_sit_pack_id).await.unwrap().unwrap();
+    assert!(sit_pack.is_official, "Seeded situation pack must have is_official = true");
+
+    let meme_pack = repo.find_meme_pack(official_meme_pack_id).await.unwrap().unwrap();
+    assert!(meme_pack.is_official, "Seeded meme pack must have is_official = true");
+
+    // 3. Create regular user packs directly via repository (simulating user creation)
+    let user_id = Uuid::from_u128(1); // default admin or test user
+    let mut tx = repo.begin().await.unwrap();
+    let user_sit_pack_id = repo.insert_situation_pack(
+        &mut tx,
+        user_id,
+        "Custom User Situations",
+        None,
+        LanguageCode::En,
+        ContentSafetyLevel::FamilyFriendly,
+        true,
+    ).await.unwrap();
+
+    let user_meme_pack_id = repo.insert_meme_pack(
+        &mut tx,
+        user_id,
+        "Custom User Memes",
+        None,
+        LanguageCode::En,
+        ContentSafetyLevel::FamilyFriendly,
+        true,
+    ).await.unwrap();
+    tx.commit().await.unwrap();
+
+    // 4. Verify user packs have is_official = false
+    let custom_sit = repo.find_situation_pack(user_sit_pack_id).await.unwrap().unwrap();
+    assert!(!custom_sit.is_official, "User-created situation pack must have is_official = false");
+
+    let custom_meme = repo.find_meme_pack(user_meme_pack_id).await.unwrap().unwrap();
+    assert!(!custom_meme.is_official, "User-created meme pack must have is_official = false");
+
+    // 5. Verify list query correctly reflects is_official flags
+    let all_sits = repo.list_situation_packs(user_id).await.unwrap();
+    let official_in_list = all_sits.iter().find(|p| p.id == official_sit_pack_id).unwrap();
+    let custom_in_list = all_sits.iter().find(|p| p.id == user_sit_pack_id).unwrap();
+    assert!(official_in_list.is_official);
+    assert!(!custom_in_list.is_official);
+
+    let all_memes = repo.list_meme_packs(user_id).await.unwrap();
+    let official_meme_in_list = all_memes.iter().find(|p| p.id == official_meme_pack_id).unwrap();
+    let custom_meme_in_list = all_memes.iter().find(|p| p.id == user_meme_pack_id).unwrap();
+    assert!(official_meme_in_list.is_official);
+    assert!(!custom_meme_in_list.is_official);
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+
 

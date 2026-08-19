@@ -32,10 +32,10 @@ pub use application::queries::{
 // Re-export domain models & repo port
 pub use domain::{
     model::{
-        ContentSafetyLevel, Game, ActiveGame, GameCard, GameMode, GamePlayer, GamePlayerHandCard,
+        ActiveGame, ContentSafetyLevel, Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard,
         GamePlayerHandCardWithMedia, GameRound, GameStatus, LanguageCode, MemePack, PackMeme,
-        PackMemeDetails, PackSituation, PlayerSubmissionState, RawGameCard, RoundPhase,
-        RoundSubmission, RoundVote, SituationPack,
+        PackMemeDetails, PackMemeReconcileState, PackSituation, PlayerSubmissionState, RawGameCard,
+        RoundPhase, RoundSubmission, RoundVote, SeedSyncStats, SituationPack,
     },
     ports::game_repository::GameRepository,
 };

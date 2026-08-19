@@ -7,9 +7,10 @@ use chrono::{DateTime, Utc};
 use crate::{
     common::http::error::AppError,
     features::game::domain::model::{
-        Game, ActiveGame, GameMode, GamePlayer, GamePlayerHandCard, GameRound, GameStatus,
-        PlayerSubmissionState, RoundPhase, RoundSubmission, ContentSafetyLevel, LanguageCode,
-        MemePack, PackMeme, SituationPack, PackSituation, GamePlayerHandCardWithMedia, RawGameCard,
+        ActiveGame, ContentSafetyLevel, Game, GameMode, GamePlayer, GamePlayerHandCard,
+        GamePlayerHandCardWithMedia, GameRound, GameStatus, LanguageCode, MemePack, PackMeme,
+        PackMemeReconcileState, PackSituation, PlayerSubmissionState, RawGameCard, RoundPhase,
+        RoundSubmission, SeedSyncStats, SituationPack,
     },
 };
 
@@ -422,5 +423,50 @@ pub trait GameRepository: Send + Sync {
         now: DateTime<Utc>,
         stale_timeout: DateTime<Utc>,
     ) -> Result<Option<GameRound>, AppError>;
+
+    // ─── Seeder & System Content Sync ──────────────────────────────────────────
+    async fn ensure_admin_user(&self, admin_id: Uuid, username: &str) -> Result<(), AppError>;
+    async fn upsert_seed_situation_pack(
+        &self,
+        pack_id: Uuid,
+        author_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+        language_code: LanguageCode,
+        safety_level: ContentSafetyLevel,
+        is_public: bool,
+    ) -> Result<(), AppError>;
+    async fn sync_seed_situations(
+        &self,
+        pack_id: Uuid,
+        items: &[(String, String)], // (prompt_text, content_hash)
+    ) -> Result<SeedSyncStats, AppError>;
+    async fn upsert_seed_meme_pack(
+        &self,
+        pack_id: Uuid,
+        author_id: Uuid,
+        name: &str,
+        description: Option<&str>,
+        language_code: LanguageCode,
+        safety_level: ContentSafetyLevel,
+        is_public: bool,
+    ) -> Result<(), AppError>;
+    async fn get_pack_memes_reconcile_state(
+        &self,
+        pack_id: Uuid,
+    ) -> Result<Vec<PackMemeReconcileState>, AppError>;
+    async fn reactivate_pack_meme(&self, id: Uuid) -> Result<(), AppError>;
+    async fn insert_seed_pack_meme(
+        &self,
+        pack_id: Uuid,
+        media_id: i64,
+        content_hash: &str,
+    ) -> Result<(), AppError>;
+    async fn deactivate_removed_pack_memes(
+        &self,
+        pack_id: Uuid,
+        desired_hashes: &[String],
+    ) -> Result<usize, AppError>;
 }
+
 

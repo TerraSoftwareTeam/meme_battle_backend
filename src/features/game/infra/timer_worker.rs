@@ -220,6 +220,15 @@ mod tests {
         async fn is_meme_locked(&self, _meme_id: Uuid) -> Result<bool, AppError> { todo!() }
         async fn is_situation_locked(&self, _situation_id: Uuid) -> Result<bool, AppError> { todo!() }
         async fn get_unused_hand_cards(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid) -> Result<Vec<GamePlayerHandCard>, AppError> { todo!() }
+
+        async fn ensure_admin_user(&self, _admin_id: Uuid, _username: &str) -> Result<(), AppError> { todo!() }
+        async fn upsert_seed_situation_pack(&self, _pack_id: Uuid, _author_id: Uuid, _name: &str, _description: Option<&str>, _language_code: LanguageCode, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<(), AppError> { todo!() }
+        async fn sync_seed_situations(&self, _pack_id: Uuid, _items: &[(String, String)]) -> Result<crate::features::game::SeedSyncStats, AppError> { todo!() }
+        async fn upsert_seed_meme_pack(&self, _pack_id: Uuid, _author_id: Uuid, _name: &str, _description: Option<&str>, _language_code: LanguageCode, _safety_level: ContentSafetyLevel, _is_public: bool) -> Result<(), AppError> { todo!() }
+        async fn get_pack_memes_reconcile_state(&self, _pack_id: Uuid) -> Result<Vec<crate::features::game::PackMemeReconcileState>, AppError> { todo!() }
+        async fn reactivate_pack_meme(&self, _id: Uuid) -> Result<(), AppError> { todo!() }
+        async fn insert_seed_pack_meme(&self, _pack_id: Uuid, _media_id: i64, _content_hash: &str) -> Result<(), AppError> { todo!() }
+        async fn deactivate_removed_pack_memes(&self, _pack_id: Uuid, _desired_hashes: &[String]) -> Result<usize, AppError> { todo!() }
     }
 
     struct MockGameNotificationSender;

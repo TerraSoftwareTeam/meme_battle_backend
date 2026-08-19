@@ -33,6 +33,7 @@ pub struct MemePack {
     pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
+    pub is_official: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -62,6 +63,7 @@ pub struct SituationPack {
     pub language_code: LanguageCode,
     pub safety_level: ContentSafetyLevel,
     pub is_public: bool,
+    pub is_official: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -73,3 +75,20 @@ pub struct PackSituation {
     pub content_hash: Option<String>,
     pub is_active: bool,
 }
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeedSyncStats {
+    pub inserted: usize,
+    pub reactivated: usize,
+    pub unchanged: usize,
+    pub deactivated: usize,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow, PartialEq, Eq)]
+pub struct PackMemeReconcileState {
+    pub id: Uuid,
+    pub media_id: Option<i64>,
+    pub content_hash: Option<String>,
+    pub is_active: bool,
+}
+
