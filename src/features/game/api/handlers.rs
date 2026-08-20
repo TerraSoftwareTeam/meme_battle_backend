@@ -15,7 +15,7 @@ use crate::{
         api::dto::{
             CreateGameRequest, UpdateGameRequest, ReadyRequest, SubmitCardRequest, VoteRequest, GameDto,
             JoinGameRequest,
-            ActiveGameDto, ActiveGamesResponseDto, GameStateDto, PlayerDto, RoundDto, RoundSubmissionDto, CreateMemePackRequest, CreateMemePackResponse,
+            ActiveGameDto, ActiveGamesResponseDto, ActiveGameInfoDto, GameStateDto, PlayerDto, RoundDto, RoundSubmissionDto, CreateMemePackRequest, CreateMemePackResponse,
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
@@ -160,10 +160,12 @@ pub async fn get_game_state(
                 .map(|s| RoundSubmissionDto {
                     id: s.id,
                     card: s.card,
+                    is_mine: s.is_mine,
                 })
                 .collect()
         }),
         my_submission: res.my_submission,
+        my_submission_id: res.my_submission_id,
         has_voted: res.has_voted,
     });
 
@@ -175,6 +177,28 @@ pub async fn get_game_state(
     };
 
     Ok(RestApiResponse::success(state_dto))
+}
+
+#[utoipa::path(
+    get,
+    path = "/games/active",
+    responses((status = 200, description = "Get current active game for user if any", body = Option<ActiveGameInfoDto>)),
+    tag = "Games"
+)]
+pub async fn get_active_game(
+    State(state): State<GameState>,
+    current_user: CurrentUser,
+) -> Result<impl IntoResponse, AppError> {
+    let user_id = Uuid::parse_str(&current_user.user_id)
+        .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
+
+    let res = state.get_active_game.execute(user_id).await?;
+    let dto = res.map(|info| ActiveGameInfoDto {
+        game_id: info.game_id,
+        status: info.status,
+    });
+
+    Ok(RestApiResponse::success(dto))
 }
 
 #[utoipa::path(
@@ -227,6 +251,47 @@ pub async fn join_game(
     state.game.join_game.execute(user_id, id, requested_handle).await?;
 
     Ok(RestApiResponse::success_with_message("Joined successfully".to_string(), ()))
+}
+
+#[utoipa::path(
+    post,
+    path = "/games/{id}/leave",
+    responses((status = 200, description = "Leave the game lobby")),
+    tag = "Games"
+)]
+pub async fn leave_game(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    Path(id_str): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let user_id = Uuid::parse_str(&current_user.user_id)
+        .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
+    let id = Uuid::parse_str(&id_str)
+        .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
+
+    state.game.leave_game.execute(user_id, id).await?;
+
+    Ok(RestApiResponse::success_with_message("Left game successfully".to_string(), ()))
+}
+
+#[utoipa::path(
+    post,
+    path = "/games/leave",
+    responses((status = 200, description = "Leave current active game lobby")),
+    tag = "Games"
+)]
+pub async fn leave_current_game(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+) -> Result<impl IntoResponse, AppError> {
+    let user_id = Uuid::parse_str(&current_user.user_id)
+        .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
+
+    if let Some(active) = state.game.get_active_game.execute(user_id).await? {
+        state.game.leave_game.execute(user_id, active.game_id).await?;
+    }
+
+    Ok(RestApiResponse::success_with_message("Left game successfully".to_string(), ()))
 }
 
 #[utoipa::path(

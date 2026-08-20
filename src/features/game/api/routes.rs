@@ -18,7 +18,8 @@ use crate::{
             UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
             MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
             UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
-            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, ActiveGameDto, ActiveGamesResponseDto, LobbiesWsTokenDto,
+            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, ActiveGameDto, ActiveGamesResponseDto,
+            ActiveGameInfoDto, LobbiesWsTokenDto, RoundSubmissionDto,
         },
         domain::model::{GameCard, GameMode, GameStatus, RoundPhase},
     },
@@ -27,6 +28,8 @@ use crate::{
 pub fn game_routes() -> Router<AppState> {
     Router::new()
         .route("/", post(handlers::create_game).get(handlers::list_active_games))
+        .route("/active", get(handlers::get_active_game))
+        .route("/leave", post(handlers::leave_current_game))
         .route("/catalog/ws-token", get(handlers::get_lobbies_ws_token))
         .route("/{id}", patch(handlers::update_game))
         .route("/packs/memes", post(handlers::create_meme_pack).get(handlers::list_meme_packs))
@@ -42,6 +45,7 @@ pub fn game_routes() -> Router<AppState> {
         .route("/{id}/state", get(handlers::get_game_state))
         .route("/events/{id}/ws-token", get(handlers::get_ws_token))
         .route("/{id}/join", post(handlers::join_game))
+        .route("/{id}/leave", post(handlers::leave_game))
         .route("/{id}/ready", post(handlers::set_ready))
         .route("/{id}/start", post(handlers::start_game_session))
         .route("/{id}/submit", post(handlers::submit_card))
@@ -53,6 +57,9 @@ pub fn game_routes() -> Router<AppState> {
     paths(
         handlers::create_game,
         handlers::list_active_games,
+        handlers::get_active_game,
+        handlers::leave_game,
+        handlers::leave_current_game,
         handlers::get_lobbies_ws_token,
         handlers::update_game,
         handlers::get_game_state,
@@ -82,6 +89,7 @@ pub fn game_routes() -> Router<AppState> {
     components(schemas(
         GameDto,
         RoundDto,
+        RoundSubmissionDto,
         PlayerDto,
         GameStateDto,
         GameCard,
@@ -108,6 +116,7 @@ pub fn game_routes() -> Router<AppState> {
         WsTokenDto,
         ActiveGameDto,
         ActiveGamesResponseDto,
+        ActiveGameInfoDto,
         LobbiesWsTokenDto,
         GameMode,
         GameStatus,

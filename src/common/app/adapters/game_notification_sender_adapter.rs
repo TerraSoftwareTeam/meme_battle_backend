@@ -12,8 +12,8 @@ use crate::{
             PublishNotificationCommand,
             model::{
                 GameFinishedPayload, GameStartedPayload, HandCardDto, HandUpdatedPayload,
-                PlayerJoinedPayload, PlayerReadyChangedPayload,
-                RoundFinishedPayload, RoundPhaseChangedPayload, RoundStartedPayload, ScoreItem,
+                PlayerJoinedPayload, PlayerLeftPayload, PlayerReadyChangedPayload,
+                RoundFinishedPayload, RoundPhaseChangedPayload, RoundSubmissionItemPayload, RoundStartedPayload, ScoreItem,
                 SubmissionReceivedPayload, VoteReceivedPayload, RealtimePayload,
                 LobbyCreatedPayload, LobbyUpdatedPayload, LobbyRemovedPayload,
             },
@@ -51,6 +51,19 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
         let payload = RealtimePayload::PlayerJoined(PlayerJoinedPayload { user_id, players_count, handle });
+        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+    }
+
+    async fn notify_player_left(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+        players_count: i32,
+        version: i64,
+    ) -> Result<(), AppError> {
+        let channel = format!("game:{}", game_id);
+        let payload = RealtimePayload::PlayerLeft(PlayerLeftPayload { user_id, players_count });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }
 
@@ -172,13 +185,36 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         round_id: Uuid,
         phase: String,
         phase_expires_at: Option<chrono::DateTime<chrono::Utc>>,
+        submissions: Option<Vec<crate::features::game::RoundSubmissionWithMedia>>,
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
+        let submissions_dto = if let Some(subs) = submissions {
+            let mut dtos = Vec::new();
+            for sub in subs {
+                let image_url = if let Some(media_id) = sub.media_id {
+                    self.get_media_asset_url.execute(media_id).await?
+                } else {
+                    None
+                };
+                dtos.push(RoundSubmissionItemPayload {
+                    id: sub.id,
+                    user_id: sub.user_id,
+                    kind: sub.kind,
+                    image_url,
+                    text: sub.text,
+                });
+            }
+            Some(dtos)
+        } else {
+            None
+        };
+
         let payload = RealtimePayload::RoundPhaseChanged(RoundPhaseChangedPayload {
             round_id,
             phase,
             phase_expires_at,
+            submissions: submissions_dto,
         });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }

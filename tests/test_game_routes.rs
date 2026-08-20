@@ -23,14 +23,14 @@ use meme_battle_backend::{
     },
     features::game::{
         api::dto::{
-            ActiveGamesResponseDto, AddMemesToPackRequest, AddSituationsToPackRequest,
+            ActiveGameInfoDto, ActiveGamesResponseDto, AddMemesToPackRequest, AddSituationsToPackRequest,
             CreateGameRequest, CreateMemePackRequest, CreateMemePackResponse,
             CreateSituationPackRequest, CreateSituationPackResponse, GameDto, GameStateDto,
             LobbiesWsTokenDto, MemePackDetailsResponse, ReadyRequest, SituationPackDetailsResponse,
             SubmitCardRequest, UpdateGameRequest, UpdateMemePackRequest,
             UpdateSituationPackRequest, VoteRequest,
         },
-        ContentSafetyLevel, GameCard, GameMode, LanguageCode, RoundPhase,
+        ContentSafetyLevel, GameCard, GameMode, GameStatus, LanguageCode, RoundPhase,
     },
 };
 
@@ -2428,4 +2428,105 @@ async fn test_game_handle_conflicts() {
         .unwrap();
     assert_eq!(handle_in_db, user_id3);
 }
+
+#[tokio::test]
+async fn test_game_active_and_leave_routes() {
+    let (_pool, app) = setup_db_and_router().await;
+
+    // 1. Create Guest Users
+    let (status1, bytes1) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    assert_eq!(status1, StatusCode::OK);
+    let auth_resp1: RestApiResponse<Value> = serde_json::from_slice(&bytes1).unwrap();
+    let token1 = auth_resp1.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    let (status2, bytes2) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
+    assert_eq!(status2, StatusCode::OK);
+    let auth_resp2: RestApiResponse<Value> = serde_json::from_slice(&bytes2).unwrap();
+    let token2 = auth_resp2.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    // 1. Initial check: neither user is in an active game
+    let (status, bytes) = send_request::<()>(&app, Method::GET, "/games/active", Some(&token1), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let resp: RestApiResponse<ActiveGameInfoDto> = serde_json::from_slice(&bytes).unwrap();
+    assert!(resp.0.data.is_none());
+
+    // 2. User 1 creates Game 1
+    let create_payload = json!({
+        "name": "Active Lobby 1",
+        "mode": "situation_to_meme",
+        "selected_situation_pack_ids": [],
+        "selected_meme_pack_ids": [],
+        "max_rounds": 3,
+        "hand_size": 5
+    });
+    let (status, create_bytes) = send_request(&app, Method::POST, "/games", Some(&token1), Some(&create_payload)).await;
+    assert_eq!(status, StatusCode::OK);
+    let create_resp: RestApiResponse<GameDto> = serde_json::from_slice(&create_bytes).unwrap();
+    let game1_id = create_resp.0.data.unwrap().id;
+
+    // 3. User 1 active game check
+    let (status, active_bytes1) = send_request::<()>(&app, Method::GET, "/games/active", Some(&token1), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let active_resp1: RestApiResponse<ActiveGameInfoDto> = serde_json::from_slice(&active_bytes1).unwrap();
+    let active_info1 = active_resp1.0.data.unwrap();
+    assert_eq!(active_info1.game_id, game1_id);
+    assert_eq!(active_info1.status, GameStatus::Lobby);
+
+    // 4. User 2 joins Game 1
+    let (join_status, _) = send_request::<()>(&app, Method::POST, &format!("/games/{}/join", game1_id), Some(&token2), None).await;
+    assert_eq!(join_status, StatusCode::OK);
+
+    // 5. User 2 active game check
+    let (status, active_bytes2) = send_request::<()>(&app, Method::GET, "/games/active", Some(&token2), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let active_resp2: RestApiResponse<ActiveGameInfoDto> = serde_json::from_slice(&active_bytes2).unwrap();
+    assert_eq!(active_resp2.0.data.unwrap().game_id, game1_id);
+
+    // 6. User 2 tries to create another game while active -> 409 Conflict
+    let (conflict_status, _) = send_request(&app, Method::POST, "/games", Some(&token2), Some(&create_payload)).await;
+    assert_eq!(conflict_status, StatusCode::CONFLICT);
+
+    // 7. User 2 leaves Game 1 via /games/{id}/leave
+    let (leave_status, _) = send_request::<()>(&app, Method::POST, &format!("/games/{}/leave", game1_id), Some(&token2), None).await;
+    assert_eq!(leave_status, StatusCode::OK);
+
+    // 8. User 2 active game check -> is now None
+    let (status, active_bytes2_after) = send_request::<()>(&app, Method::GET, "/games/active", Some(&token2), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let active_resp2_after: RestApiResponse<ActiveGameInfoDto> = serde_json::from_slice(&active_bytes2_after).unwrap();
+    assert!(active_resp2_after.0.data.is_none());
+
+    // 9. User 2 can now create Game 2
+    let (status2, create_bytes2) = send_request(&app, Method::POST, "/games", Some(&token2), Some(&create_payload)).await;
+    assert_eq!(status2, StatusCode::OK);
+    let create_resp2: RestApiResponse<GameDto> = serde_json::from_slice(&create_bytes2).unwrap();
+    assert!(create_resp2.0.data.is_some());
+
+    // 10. User 2 leaves Game 2 via /games/leave (active-based route)
+    let (leave_status2, _) = send_request::<()>(&app, Method::POST, "/games/leave", Some(&token2), None).await;
+    assert_eq!(leave_status2, StatusCode::OK);
+
+    let (status, active_bytes2_final) = send_request::<()>(&app, Method::GET, "/games/active", Some(&token2), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let active_resp2_final: RestApiResponse<ActiveGameInfoDto> = serde_json::from_slice(&active_bytes2_final).unwrap();
+    assert!(active_resp2_final.0.data.is_none());
+
+    // 11. User 2 rejoins Game 1
+    let (join_status2, _) = send_request::<()>(&app, Method::POST, &format!("/games/{}/join", game1_id), Some(&token2), None).await;
+    assert_eq!(join_status2, StatusCode::OK);
+
+    // 12. Setup enough cards and start Game 1 (transitions to Playing)
+    // Mark players ready
+    let (ready_status1, _) = send_request(&app, Method::POST, &format!("/games/{}/ready", game1_id), Some(&token1), Some(&json!({ "is_ready": true }))).await;
+    assert_eq!(ready_status1, StatusCode::OK);
+    let (ready_status2, _) = send_request(&app, Method::POST, &format!("/games/{}/ready", game1_id), Some(&token2), Some(&json!({ "is_ready": true }))).await;
+    assert_eq!(ready_status2, StatusCode::OK);
+
+    // 13. Try to leave when not in game -> 404
+    let random_game_id = Uuid::new_v4();
+    let (not_found_status, _) = send_request::<()>(&app, Method::POST, &format!("/games/{}/leave", random_game_id), Some(&token1), None).await;
+    assert_eq!(not_found_status, StatusCode::NOT_FOUND);
+}
+
+
 

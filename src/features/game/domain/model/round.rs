@@ -55,3 +55,13 @@ pub struct RoundVote {
     pub submission_id: Uuid,
     pub created_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone)]
+pub struct RoundSubmissionWithMedia {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub kind: String,
+    pub media_id: Option<i64>,
+    pub text: Option<String>,
+}
+

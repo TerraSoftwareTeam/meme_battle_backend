@@ -15,6 +15,7 @@ use crate::{
 pub struct GameStateSubmission {
     pub id: Uuid,
     pub card: GameCard,
+    pub is_mine: bool,
 }
 
 pub struct GameStateResult {
@@ -25,6 +26,7 @@ pub struct GameStateResult {
     pub my_hand: Vec<GameCard>,
     pub submissions: Option<Vec<GameStateSubmission>>,
     pub my_submission: Option<GameCard>,
+    pub my_submission_id: Option<Uuid>,
     pub has_voted: bool,
 }
 
@@ -74,6 +76,7 @@ impl GetGameStateQuery {
         // Populate new snapshot fields
         let mut submissions = None;
         let mut my_submission = None;
+        let mut my_submission_id = None;
         let mut has_voted = false;
 
         if let Some(round) = &current_round {
@@ -83,6 +86,7 @@ impl GetGameStateQuery {
 
             // Find current user's submission to display under my_submission
             if let Some(my_sub) = round_subs.iter().find(|s| s.user_id == user_id) {
+                my_submission_id = Some(my_sub.id);
                 if let Some(meme_id) = my_sub.submission_meme_id {
                     let media_id = self.repo.find_pack_meme_by_id(meme_id).await?.map(|m| m.media_id).flatten();
                     my_submission = Some(self.resolve_card(RawGameCard::Meme { id: meme_id, media_id }).await?);
@@ -97,6 +101,7 @@ impl GetGameStateQuery {
             if matches!(round.phase, RoundPhase::Voting | RoundPhase::Finished) {
                 let mut resolved_subs = Vec::new();
                 for sub in round_subs {
+                    let is_mine = sub.user_id == user_id;
                     let card = if let Some(meme_id) = sub.submission_meme_id {
                         let media_id = self.repo.find_pack_meme_by_id(meme_id).await?.map(|m| m.media_id).flatten();
                         self.resolve_card(RawGameCard::Meme { id: meme_id, media_id }).await?
@@ -109,6 +114,7 @@ impl GetGameStateQuery {
                     resolved_subs.push(GameStateSubmission {
                         id: sub.id,
                         card,
+                        is_mine,
                     });
                 }
                 submissions = Some(resolved_subs);
@@ -125,6 +131,7 @@ impl GetGameStateQuery {
             my_hand: resolved_my_hand,
             submissions,
             my_submission,
+            my_submission_id,
             has_voted,
         })
     }

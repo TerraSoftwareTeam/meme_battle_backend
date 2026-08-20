@@ -11,7 +11,7 @@ use crate::{
             ActiveGame, ContentSafetyLevel, Game, GameMode, GamePlayer, GamePlayerHandCard,
             GamePlayerHandCardWithMedia, GameRound, GameStatus, LanguageCode, MemePack, PackMeme,
             PackMemeReconcileState, PackSituation, PlayerSubmissionState, RawGameCard, RoundPhase,
-            RoundSubmission, SeedSyncStats, SituationPack,
+            RoundSubmission, RoundSubmissionWithMedia, SeedSyncStats, SituationPack,
         },
         ports::GameRepository,
     },
@@ -732,6 +732,68 @@ impl GameRepository for GameRepositoryImpl {
         .bind(round_id)
         .fetch_all(&mut **tx)
         .await?;
+
+        Ok(subs)
+    }
+
+    async fn get_round_submissions_with_media(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+    ) -> Result<Vec<RoundSubmissionWithMedia>, AppError> {
+        #[derive(sqlx::FromRow)]
+        #[allow(dead_code)]
+        struct RawSubRow {
+            id: Uuid,
+            user_id: Uuid,
+            submission_meme_id: Option<Uuid>,
+            submission_situation_id: Option<Uuid>,
+            media_id: Option<i64>,
+            text: Option<String>,
+        }
+
+        let rows = sqlx::query_as::<_, RawSubRow>(
+            r#"
+            SELECT
+                rs.id,
+                rs.user_id,
+                rs.submission_meme_id,
+                rs.submission_situation_id,
+                pm.media_id,
+                ps.prompt_text AS text
+            FROM round_submissions rs
+            LEFT JOIN pack_memes pm ON rs.submission_meme_id = pm.id
+            LEFT JOIN pack_situations ps ON rs.submission_situation_id = ps.id
+            WHERE rs.round_id = $1
+            ORDER BY rs.submitted_at ASC
+            "#,
+        )
+        .bind(round_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        let subs = rows
+            .into_iter()
+            .map(|row| {
+                if row.submission_meme_id.is_some() {
+                    RoundSubmissionWithMedia {
+                        id: row.id,
+                        user_id: row.user_id,
+                        kind: "meme".to_string(),
+                        media_id: row.media_id,
+                        text: None,
+                    }
+                } else {
+                    RoundSubmissionWithMedia {
+                        id: row.id,
+                        user_id: row.user_id,
+                        kind: "situation".to_string(),
+                        media_id: None,
+                        text: row.text,
+                    }
+                }
+            })
+            .collect();
 
         Ok(subs)
     }
@@ -2107,6 +2169,54 @@ impl GameRepository for GameRepositoryImpl {
         }
 
         Ok(deactivated_count)
+    }
+
+    async fn find_active_game_for_player(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<(Uuid, GameStatus)>, AppError> {
+        #[derive(sqlx::FromRow)]
+        struct ActiveGameRow {
+            game_id: Uuid,
+            status: GameStatus,
+        }
+
+        let row = sqlx::query_as::<_, ActiveGameRow>(
+            r#"
+            SELECT gp.game_id, g.status
+            FROM game_players gp
+            JOIN games g ON g.id = gp.game_id
+            WHERE gp.user_id = $1
+              AND g.status IN ('lobby', 'playing')
+            ORDER BY gp.joined_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|r| (r.game_id, r.status)))
+    }
+
+    async fn remove_player(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            DELETE FROM game_players
+            WHERE game_id = $1 AND user_id = $2
+            "#,
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
     }
 }
 

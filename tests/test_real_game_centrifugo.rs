@@ -827,6 +827,17 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             payload.get("round_id").unwrap().as_str(),
             Some(round1_id.to_string().as_str())
         );
+        let subs = payload
+            .get("submissions")
+            .and_then(|s| s.as_array())
+            .expect("submissions array in round_phase_changed");
+        assert_eq!(subs.len(), 3);
+        for sub in subs {
+            assert!(sub.get("id").is_some(), "submission id missing");
+            assert!(sub.get("user_id").is_some(), "submission user_id missing");
+            assert_eq!(sub.get("kind").unwrap().as_str(), Some("meme"));
+            assert!(sub.get("image_url").is_some(), "submission image_url missing");
+        }
     }
 
     // Try to submit another card in the voting phase -> should fail with CONFLICT (409)
@@ -1113,6 +1124,11 @@ async fn test_real_game_centrifugo_gameplay_flow() {
         let data = push_data(&event).unwrap();
         let payload = data.get("payload").unwrap();
         assert_eq!(payload.get("phase").unwrap().as_str(), Some("voting"));
+        let subs = payload
+            .get("submissions")
+            .and_then(|s| s.as_array())
+            .expect("submissions array in round_phase_changed for Round 2");
+        assert_eq!(subs.len(), 3);
     }
 
     // ── 21. Players vote (Round 2) → triggers round_finished + game_finished ──

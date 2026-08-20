@@ -1,5 +1,6 @@
 pub mod create;
 pub mod join;
+pub mod leave;
 pub mod set_ready;
 pub mod start;
 pub mod submit_card;
@@ -10,6 +11,7 @@ pub mod handle;
 
 pub use create::CreateGameCommand;
 pub use join::JoinGameCommand;
+pub use leave::LeaveGameCommand;
 pub use set_ready::SetReadyCommand;
 pub use start::StartGameCommand;
 pub use submit_card::SubmitCardCommand;

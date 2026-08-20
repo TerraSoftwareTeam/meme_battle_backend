@@ -10,15 +10,17 @@ pub use api::routes::{game_routes, GameApiDoc};
 pub use application::commands::{
     AddMemesToPackCommand, AddSituationsToPackCommand, CreateGameCommand, CreateMemePackCommand,
     CreateSituationPackCommand, DeleteMemePackCommand, DeletePackMemeCommand,
-    DeletePackSituationCommand, DeleteSituationPackCommand, JoinGameCommand, ProcessTimeoutCommand,
-    SetReadyCommand, StartGameCommand, SubmitCardCommand, UpdateGameCommand, UpdateMemePackCommand,
-    UpdateSituationPackCommand, VoteCardCommand,
+    DeletePackSituationCommand, DeleteSituationPackCommand, JoinGameCommand, LeaveGameCommand,
+    ProcessTimeoutCommand, SetReadyCommand, StartGameCommand, SubmitCardCommand, UpdateGameCommand,
+    UpdateMemePackCommand, UpdateSituationPackCommand, VoteCardCommand,
 };
 
 // Re-export queries
 pub use application::queries::{
+    get_active_game::{ActiveGameInfo, GetActiveGameQuery},
     get_game_state::{GameStateResult, GetGameStateQuery},
     get_ws_token::{GetWsTokenQuery, WsTokenResult},
+    list_active_games::{ListActiveGamesQuery, ListActiveGamesResult},
     meme_pack_queries::{
         GetMemePackQuery, ListMemePacksQuery, ListUserMemePacksQuery, MemePackQueryResult,
     },
@@ -26,7 +28,6 @@ pub use application::queries::{
         GetSituationPackQuery, ListSituationPacksQuery, ListUserSituationPacksQuery,
         SituationPackQueryResult,
     },
-    list_active_games::{ListActiveGamesQuery, ListActiveGamesResult},
 };
 
 // Re-export domain models & repo port
@@ -35,7 +36,7 @@ pub use domain::{
         ActiveGame, ContentSafetyLevel, Game, GameCard, GameMode, GamePlayer, GamePlayerHandCard,
         GamePlayerHandCardWithMedia, GameRound, GameStatus, LanguageCode, MemePack, PackMeme,
         PackMemeDetails, PackMemeReconcileState, PackSituation, PlayerSubmissionState, RawGameCard,
-        RoundPhase, RoundSubmission, RoundVote, SeedSyncStats, SituationPack,
+        RoundPhase, RoundSubmission, RoundSubmissionWithMedia, RoundVote, SeedSyncStats, SituationPack,
     },
     ports::game_repository::GameRepository,
 };
@@ -55,12 +56,14 @@ use std::sync::Arc;
 pub struct GameState {
     pub create_game: Arc<CreateGameCommand>,
     pub join_game: Arc<JoinGameCommand>,
+    pub leave_game: Arc<LeaveGameCommand>,
     pub set_ready: Arc<SetReadyCommand>,
     pub start_game: Arc<StartGameCommand>,
     pub update_game: Arc<UpdateGameCommand>,
     pub submit_card: Arc<SubmitCardCommand>,
     pub vote_card: Arc<VoteCardCommand>,
     pub get_game_state: Arc<GetGameStateQuery>,
+    pub get_active_game: Arc<GetActiveGameQuery>,
     pub create_meme_pack: Arc<CreateMemePackCommand>,
     pub update_meme_pack: Arc<UpdateMemePackCommand>,
     pub delete_meme_pack: Arc<DeleteMemePackCommand>,
@@ -89,12 +92,14 @@ impl GameState {
     pub fn new(
         create_game: Arc<CreateGameCommand>,
         join_game: Arc<JoinGameCommand>,
+        leave_game: Arc<LeaveGameCommand>,
         set_ready: Arc<SetReadyCommand>,
         start_game: Arc<StartGameCommand>,
         update_game: Arc<UpdateGameCommand>,
         submit_card: Arc<SubmitCardCommand>,
         vote_card: Arc<VoteCardCommand>,
         get_game_state: Arc<GetGameStateQuery>,
+        get_active_game: Arc<GetActiveGameQuery>,
         create_meme_pack: Arc<CreateMemePackCommand>,
         update_meme_pack: Arc<UpdateMemePackCommand>,
         delete_meme_pack: Arc<DeleteMemePackCommand>,
@@ -121,12 +126,14 @@ impl GameState {
         Self {
             create_game,
             join_game,
+            leave_game,
             set_ready,
             start_game,
             update_game,
             submit_card,
             vote_card,
             get_game_state,
+            get_active_game,
             create_meme_pack,
             update_meme_pack,
             delete_meme_pack,

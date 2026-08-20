@@ -10,7 +10,7 @@ use crate::{
         ActiveGame, ContentSafetyLevel, Game, GameMode, GamePlayer, GamePlayerHandCard,
         GamePlayerHandCardWithMedia, GameRound, GameStatus, LanguageCode, MemePack, PackMeme,
         PackMemeReconcileState, PackSituation, PlayerSubmissionState, RawGameCard, RoundPhase,
-        RoundSubmission, SeedSyncStats, SituationPack,
+        RoundSubmission, RoundSubmissionWithMedia, SeedSyncStats, SituationPack,
     },
 };
 
@@ -189,6 +189,12 @@ pub trait GameRepository: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         round_id: Uuid,
     ) -> Result<Vec<RoundSubmission>, AppError>;
+
+    async fn get_round_submissions_with_media(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        round_id: Uuid,
+    ) -> Result<Vec<RoundSubmissionWithMedia>, AppError>;
 
     async fn update_round_winner_and_phase(
         &self,
@@ -467,6 +473,21 @@ pub trait GameRepository: Send + Sync {
         pack_id: Uuid,
         desired_hashes: &[String],
     ) -> Result<usize, AppError>;
+
+    /// Returns the game_id and status of the active (Lobby or Playing) game
+    /// the player is currently in, if any.
+    async fn find_active_game_for_player(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Option<(Uuid, GameStatus)>, AppError>;
+
+    /// Removes a player from the game (only valid while game is in Lobby).
+    async fn remove_player(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<(), AppError>;
 }
 
 

@@ -62,6 +62,14 @@ impl CreateGameCommand {
             }
         }
 
+        // Validate creator is not already in an active game
+        if let Some((active_game_id, _)) = self.repo.find_active_game_for_player(creator_id).await? {
+            return Err(AppError::Conflict(format!(
+                "You are already in an active game ({}). Leave it before creating a new one.",
+                active_game_id
+            )));
+        }
+
         let mut tx = self.repo.begin().await?;
 
         // 1. Create Game

@@ -647,19 +647,32 @@ async fn test_timer_and_concurrency_edge_cases() {
     assert_eq!(state_after_late_call.phase, RoundPhase::Voting);
 
     // Test Case 3: Empty Hand Auto-submission skip
-    let game_empty = state.game.create_game.execute(user_id1, "Empty Hand Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
-    state.game.join_game.execute(user_id2, game_empty.id, None).await.unwrap();
-    state.game.join_game.execute(user_id3, game_empty.id, None).await.unwrap();
-    state.game.set_ready.execute(user_id1, game_empty.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id2, game_empty.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id3, game_empty.id, true).await.unwrap();
-    state.game.start_game.execute(user_id1, game_empty.id).await.unwrap();
+    let empty_u1 = Uuid::new_v4();
+    let empty_u2 = Uuid::new_v4();
+    let empty_u3 = Uuid::new_v4();
+    let eu1_name = format!("eu1_{}", Uuid::new_v4().simple());
+    let eu2_name = format!("eu2_{}", Uuid::new_v4().simple());
+    let eu3_name = format!("eu3_{}", Uuid::new_v4().simple());
+    sqlx::query("INSERT INTO users (id, username, role) VALUES ($1, $4, 'user'), ($2, $5, 'user'), ($3, $6, 'user')")
+        .bind(empty_u1).bind(empty_u2).bind(empty_u3)
+        .bind(eu1_name).bind(eu2_name).bind(eu3_name)
+        .execute(&pool)
+        .await
+        .unwrap();
 
-    let round_empty = state.game.get_game_state.execute(user_id1, game_empty.id).await.unwrap().round.unwrap();
+    let game_empty = state.game.create_game.execute(empty_u1, "Empty Hand Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
+    state.game.join_game.execute(empty_u2, game_empty.id, None).await.unwrap();
+    state.game.join_game.execute(empty_u3, game_empty.id, None).await.unwrap();
+    state.game.set_ready.execute(empty_u1, game_empty.id, true).await.unwrap();
+    state.game.set_ready.execute(empty_u2, game_empty.id, true).await.unwrap();
+    state.game.set_ready.execute(empty_u3, game_empty.id, true).await.unwrap();
+    state.game.start_game.execute(empty_u1, game_empty.id).await.unwrap();
+
+    let round_empty = state.game.get_game_state.execute(empty_u1, game_empty.id).await.unwrap().round.unwrap();
 
     sqlx::query("DELETE FROM game_player_hand WHERE game_id = $1 AND user_id = $2")
         .bind(game_empty.id)
-        .bind(user_id2)
+        .bind(empty_u2)
         .execute(&pool)
         .await
         .unwrap();
@@ -673,7 +686,7 @@ async fn test_timer_and_concurrency_edge_cases() {
 
     state.game.process_timeout.execute(round_empty.id).await.unwrap();
 
-    let state_voting_empty = state.game.get_game_state.execute(user_id1, game_empty.id).await.unwrap().round.unwrap();
+    let state_voting_empty = state.game.get_game_state.execute(empty_u1, game_empty.id).await.unwrap().round.unwrap();
     assert_eq!(state_voting_empty.phase, RoundPhase::Voting);
 
     // Test Case 4: Zero-Votes Timeout (Nullable Winner)
@@ -715,22 +728,35 @@ async fn test_timer_and_concurrency_edge_cases() {
 
 
     // Test Case 5: Partial Submissions Auto-Submit
-    let game_partial = state.game.create_game.execute(user_id1, "Partial Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
-    state.game.join_game.execute(user_id2, game_partial.id, None).await.unwrap();
-    state.game.join_game.execute(user_id3, game_partial.id, None).await.unwrap();
-    state.game.set_ready.execute(user_id1, game_partial.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id2, game_partial.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id3, game_partial.id, true).await.unwrap();
-    state.game.start_game.execute(user_id1, game_partial.id).await.unwrap();
+    let partial_u1 = Uuid::new_v4();
+    let partial_u2 = Uuid::new_v4();
+    let partial_u3 = Uuid::new_v4();
+    let pu1_name = format!("pu1_{}", Uuid::new_v4().simple());
+    let pu2_name = format!("pu2_{}", Uuid::new_v4().simple());
+    let pu3_name = format!("pu3_{}", Uuid::new_v4().simple());
+    sqlx::query("INSERT INTO users (id, username, role) VALUES ($1, $4, 'user'), ($2, $5, 'user'), ($3, $6, 'user')")
+        .bind(partial_u1).bind(partial_u2).bind(partial_u3)
+        .bind(pu1_name).bind(pu2_name).bind(pu3_name)
+        .execute(&pool)
+        .await
+        .unwrap();
 
-    let round_partial = state.game.get_game_state.execute(user_id1, game_partial.id).await.unwrap().round.unwrap();
+    let game_partial = state.game.create_game.execute(partial_u1, "Partial Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
+    state.game.join_game.execute(partial_u2, game_partial.id, None).await.unwrap();
+    state.game.join_game.execute(partial_u3, game_partial.id, None).await.unwrap();
+    state.game.set_ready.execute(partial_u1, game_partial.id, true).await.unwrap();
+    state.game.set_ready.execute(partial_u2, game_partial.id, true).await.unwrap();
+    state.game.set_ready.execute(partial_u3, game_partial.id, true).await.unwrap();
+    state.game.start_game.execute(partial_u1, game_partial.id).await.unwrap();
 
-    let hand1 = state.game.get_game_state.execute(user_id1, game_partial.id).await.unwrap().my_hand;
+    let round_partial = state.game.get_game_state.execute(partial_u1, game_partial.id).await.unwrap().round.unwrap();
+
+    let hand1 = state.game.get_game_state.execute(partial_u1, game_partial.id).await.unwrap().my_hand;
     let card_id = match &hand1[0] {
         GameCard::Meme { id, .. } => *id,
         GameCard::Situation { id, .. } => *id,
     };
-    state.game.submit_card.execute(user_id1, game_partial.id, card_id).await.unwrap();
+    state.game.submit_card.execute(partial_u1, game_partial.id, card_id).await.unwrap();
 
     sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
         .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
@@ -741,7 +767,7 @@ async fn test_timer_and_concurrency_edge_cases() {
 
     state.game.process_timeout.execute(round_partial.id).await.unwrap();
 
-    let round_partial_after = state.game.get_game_state.execute(user_id1, game_partial.id).await.unwrap().round.unwrap();
+    let round_partial_after = state.game.get_game_state.execute(partial_u1, game_partial.id).await.unwrap().round.unwrap();
     assert_eq!(round_partial_after.phase, RoundPhase::Voting);
 
     let submission_count = sqlx::query("SELECT COUNT(*) FROM round_submissions WHERE round_id = $1")
@@ -753,15 +779,28 @@ async fn test_timer_and_concurrency_edge_cases() {
     assert_eq!(submission_count, 3, "All 3 players should have submissions (2 auto-submitted)");
 
     // Test Case 6: Concurrent Lease Claim Protection
-    let game_lease = state.game.create_game.execute(user_id1, "Lease Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
-    state.game.join_game.execute(user_id2, game_lease.id, None).await.unwrap();
-    state.game.join_game.execute(user_id3, game_lease.id, None).await.unwrap();
-    state.game.set_ready.execute(user_id1, game_lease.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id2, game_lease.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id3, game_lease.id, true).await.unwrap();
-    state.game.start_game.execute(user_id1, game_lease.id).await.unwrap();
+    let lease_u1 = Uuid::new_v4();
+    let lease_u2 = Uuid::new_v4();
+    let lease_u3 = Uuid::new_v4();
+    let lu1_name = format!("lu1_{}", Uuid::new_v4().simple());
+    let lu2_name = format!("lu2_{}", Uuid::new_v4().simple());
+    let lu3_name = format!("lu3_{}", Uuid::new_v4().simple());
+    sqlx::query("INSERT INTO users (id, username, role) VALUES ($1, $4, 'user'), ($2, $5, 'user'), ($3, $6, 'user')")
+        .bind(lease_u1).bind(lease_u2).bind(lease_u3)
+        .bind(lu1_name).bind(lu2_name).bind(lu3_name)
+        .execute(&pool)
+        .await
+        .unwrap();
 
-    let round_lease = state.game.get_game_state.execute(user_id1, game_lease.id).await.unwrap().round.unwrap();
+    let game_lease = state.game.create_game.execute(lease_u1, "Lease Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
+    state.game.join_game.execute(lease_u2, game_lease.id, None).await.unwrap();
+    state.game.join_game.execute(lease_u3, game_lease.id, None).await.unwrap();
+    state.game.set_ready.execute(lease_u1, game_lease.id, true).await.unwrap();
+    state.game.set_ready.execute(lease_u2, game_lease.id, true).await.unwrap();
+    state.game.set_ready.execute(lease_u3, game_lease.id, true).await.unwrap();
+    state.game.start_game.execute(lease_u1, game_lease.id).await.unwrap();
+
+    let round_lease = state.game.get_game_state.execute(lease_u1, game_lease.id).await.unwrap().round.unwrap();
 
     sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
         .bind(chrono::Utc::now() - chrono::Duration::seconds(10))

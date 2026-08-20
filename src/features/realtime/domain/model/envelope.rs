@@ -70,9 +70,26 @@ pub struct PlayerJoinedPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlayerLeftPayload {
+    pub user_id: Uuid,
+    pub players_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerReadyChangedPayload {
     pub user_id: Uuid,
     pub is_ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoundSubmissionItemPayload {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +98,8 @@ pub struct RoundPhaseChangedPayload {
     pub phase: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phase_expires_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submissions: Option<Vec<RoundSubmissionItemPayload>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -185,6 +204,7 @@ pub struct LobbyRemovedPayload {
 #[serde(untagged)]
 pub enum RealtimePayload {
     PlayerJoined(PlayerJoinedPayload),
+    PlayerLeft(PlayerLeftPayload),
     PlayerReadyChanged(PlayerReadyChangedPayload),
     RoundPhaseChanged(RoundPhaseChangedPayload),
     VoteReceived(VoteReceivedPayload),
@@ -206,6 +226,7 @@ impl RealtimePayload {
     pub fn event_type(&self) -> RealtimeEventType {
         match self {
             RealtimePayload::PlayerJoined(_) => RealtimeEventType::PlayerJoined,
+            RealtimePayload::PlayerLeft(_) => RealtimeEventType::PlayerLeft,
             RealtimePayload::PlayerReadyChanged(_) => RealtimeEventType::PlayerReadyChanged,
             RealtimePayload::RoundPhaseChanged(_) => RealtimeEventType::RoundPhaseChanged,
             RealtimePayload::VoteReceived(_) => RealtimeEventType::VoteReceived,

@@ -37,6 +37,16 @@ impl JoinGameCommand {
             return Err(AppError::Conflict("Cannot join active or finished game".to_string()));
         }
 
+        // Check if player is already in another active game
+        if let Some((active_game_id, _)) = self.repo.find_active_game_for_player(user_id).await? {
+            if active_game_id != game_id {
+                return Err(AppError::Conflict(format!(
+                    "You are already in another active game ({}). Leave it before joining a new one.",
+                    active_game_id
+                )));
+            }
+        }
+
         // Check if player is already in game
         let players = self.repo.get_players(game_id).await?;
         if players.iter().any(|p| p.user_id == user_id) {

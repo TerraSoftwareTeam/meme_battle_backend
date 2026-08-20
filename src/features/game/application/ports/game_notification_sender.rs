@@ -17,6 +17,15 @@ pub trait GameNotificationSender: Send + Sync {
         version: i64,
     ) -> Result<(), AppError>;
 
+    async fn notify_player_left(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        user_id: Uuid,
+        players_count: i32,
+        version: i64,
+    ) -> Result<(), AppError>;
+
     async fn notify_player_ready_changed(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -75,6 +84,7 @@ pub trait GameNotificationSender: Send + Sync {
         round_id: Uuid,
         phase: String,
         phase_expires_at: Option<DateTime<Utc>>,
+        submissions: Option<Vec<crate::features::game::RoundSubmissionWithMedia>>,
         version: i64,
     ) -> Result<(), AppError>;
 

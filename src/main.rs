@@ -2,8 +2,8 @@ use common::app::{
     bootstrap::{build_app_state, run_database_migrations, shutdown_signal},
     config::{setup_database, Config},
 };
-use std::time::Instant;
 use meme_battle_backend::{app::create_router, common};
+use std::time::Instant;
 use tracing::{error, info};
 
 #[cfg(not(feature = "opentelemetry"))]
@@ -56,9 +56,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Err(err.into());
     }
 
-    // CLI Subcommand: Seeding
+    // CLI subcommand: Seeding
     let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|arg| arg == "seed" || arg == "--seed" || arg.starts_with("--seed-dir")) {
+    if args
+        .iter()
+        .any(|arg| arg == "seed" || arg == "--seed" || arg.starts_with("--seed-dir"))
+    {
         let seeds_dir_str = args
             .windows(2)
             .find_map(|window| {
@@ -82,7 +85,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .unwrap_or_else(|| "seeds".to_string());
 
         let seeds_path = std::path::PathBuf::from(&seeds_dir_str);
-        info!("Executing database seeding task from '{}'...", seeds_path.display());
+        info!(
+            "Executing database seeding task from '{}'...",
+            seeds_path.display()
+        );
         let seeder = meme_battle_backend::common::seeder::Seeder::new(pool.clone(), config.clone());
         if let Err(err) = seeder.sync_all(&seeds_path).await {
             error!(error = %err, "Seeding failed");
@@ -97,7 +103,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     // Start unified realtime outbox processor worker
-    state.realtime.processor.clone().start(pool.clone(), shutdown_rx.clone());
+    state
+        .realtime
+        .processor
+        .clone()
+        .start(pool.clone(), shutdown_rx.clone());
 
     // Start game timer background worker
     state.game.timer_worker.clone().start(shutdown_rx);

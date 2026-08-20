@@ -70,9 +70,16 @@ pub struct LobbiesWsTokenDto {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
+pub struct ActiveGameInfoDto {
+    pub game_id: Uuid,
+    pub status: GameStatus,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct RoundSubmissionDto {
     pub id: Uuid,
     pub card: GameCard,
+    pub is_mine: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
@@ -86,6 +93,8 @@ pub struct RoundDto {
     pub submissions: Option<Vec<RoundSubmissionDto>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub my_submission: Option<GameCard>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub my_submission_id: Option<Uuid>,
     pub has_voted: bool,
 }
 

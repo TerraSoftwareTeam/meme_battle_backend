@@ -178,7 +178,9 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let update_game = Arc::new(crate::features::game::UpdateGameCommand::new(game_repository.clone()));
     let submit_card = Arc::new(crate::features::game::SubmitCardCommand::new(game_repository.clone(), notification_sender.clone()));
     let vote_card = Arc::new(crate::features::game::VoteCardCommand::new(game_repository.clone(), notification_sender.clone()));
+    let leave_game = Arc::new(crate::features::game::LeaveGameCommand::new(game_repository.clone(), notification_sender.clone()));
     let get_game_state = Arc::new(crate::features::game::GetGameStateQuery::new(game_repository.clone(), game_media_manager.clone()));
+    let get_active_game = Arc::new(crate::features::game::GetActiveGameQuery::new(game_repository.clone()));
     let create_meme_pack = Arc::new(crate::features::game::CreateMemePackCommand::new(
         game_repository.clone(),
         mark_media_attached.clone(),
@@ -219,12 +221,14 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let game_state = crate::features::game::GameState::new(
         create_game,
         join_game,
+        leave_game,
         set_ready,
         start_game,
         update_game,
         submit_card,
         vote_card,
         get_game_state,
+        get_active_game,
         create_meme_pack,
         update_meme_pack,
         delete_meme_pack,

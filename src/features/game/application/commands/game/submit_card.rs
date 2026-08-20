@@ -128,6 +128,11 @@ impl SubmitCardCommand {
         if round_phase_changed {
             new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
 
+            let submissions = self
+                .repo
+                .get_round_submissions_with_media(&mut tx, round_id)
+                .await?;
+
             self.repo
                 .insert_game_event(
                     &mut tx,
@@ -149,6 +154,7 @@ impl SubmitCardCommand {
                     round_id,
                     "voting".to_string(),
                     next_expires_at,
+                    Some(submissions),
                     new_version,
                 )
                 .await?;
