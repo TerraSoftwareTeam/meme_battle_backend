@@ -29,11 +29,6 @@ pub struct LoginUser {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GuestAuth {
-    pub username: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshSession {
     pub refresh_token: String,
 }

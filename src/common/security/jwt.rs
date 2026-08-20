@@ -22,7 +22,7 @@ pub static KEYS: LazyLock<Keys> = LazyLock::new(|| {
 
     let jwt_secret = env::var("JWT_SECRET_KEY").expect("JWT_SECRET_KEY must be set");
     let argon_secret = env::var("ARGON2_SECRET_KEY").expect("ARGON2_SECRET_KEY must be set");
-    let hmac_secret = env::var("ARGON2_SECRET_KEY").expect("ARGON2_SECRET_KEY must be set");
+    let hmac_secret = env::var("HMAC_SECRET_KEY").expect("HMAC_SECRET_KEY must be set");
 
     Keys::new(
         jwt_secret.as_bytes(),

@@ -15,7 +15,7 @@ use http_body_util::BodyExt;
 use std::time::Duration;
 use tower::ServiceBuilder;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::CorsLayer,
     trace::TraceLayer,
 };
 
@@ -41,11 +41,29 @@ pub static FORBIDDEN_PATTERNS: Lazy<Vec<Regex>> =
     Lazy::new(|| vec![Regex::new(r"(?i)<\s*script\b[^>]*>").unwrap()]);
 
 pub fn create_router(state: AppState) -> Router {
-    // Build a CORS layer that applies to everyone
+    // Build a CORS layer that restricts access exclusively to configured origin
+    let allowed_origin = state
+        .config
+        .cors_allowed_origin
+        .parse::<axum::http::HeaderValue>()
+        .unwrap_or_else(|_| {
+            "https://meme.skyfly.hackclub.app"
+                .parse::<axum::http::HeaderValue>()
+                .unwrap()
+        });
+
     let cors = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_origin(Any)
-        .allow_headers([AUTHORIZATION, CONTENT_TYPE]);
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_origin(allowed_origin)
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE, axum::http::header::ACCEPT])
+        .allow_credentials(true);
 
     // Create a common middleware stack for error handling, timeouts, and CORS.
     let middleware_stack = ServiceBuilder::new()

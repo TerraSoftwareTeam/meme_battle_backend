@@ -63,21 +63,25 @@ impl AuthRepository for AuthRepositoryImpl {
         password_hash: Option<String>,
     ) -> Result<String, AppError> {
         let mut tx = self.pool.begin().await?;
-
-        if let Some(ref name) = username {
-            let existing_user_id: Option<String> =
-                sqlx::query_scalar("SELECT id::text FROM users WHERE username = $1")
-                    .bind(name)
-                    .fetch_optional(&mut *tx)
-                    .await?;
-
-            if existing_user_id.is_some() {
-                tx.rollback().await?;
-                return Err(AppError::UserAlreadyExists);
-            }
-        }
-
         let user_id = uuid::Uuid::new_v4().to_string();
+
+        let final_username = match username {
+            Some(name) if !name.trim().is_empty() => {
+                let trimmed = name.trim().to_string();
+                let existing_user_id: Option<String> =
+                    sqlx::query_scalar("SELECT id::text FROM users WHERE username = $1")
+                        .bind(&trimmed)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+
+                if existing_user_id.is_some() {
+                    tx.rollback().await?;
+                    return Err(AppError::UserAlreadyExists);
+                }
+                trimmed
+            }
+            _ => format!("player-{}", user_id),
+        };
 
         sqlx::query(
             r#"
@@ -86,7 +90,7 @@ impl AuthRepository for AuthRepositoryImpl {
             "#,
         )
         .bind(&user_id)
-        .bind(username)
+        .bind(&final_username)
         .execute(&mut *tx)
         .await?;
 

@@ -6,6 +6,10 @@
   "admin_password": "${CENTRIFUGO_ADMIN_PASSWORD}",
   "admin_secret": "${CENTRIFUGO_ADMIN_SECRET}",
 
+  "allowed_origins": [
+    "${CENTRIFUGO_ALLOWED_ORIGIN}"
+  ],
+
   "user_subscribe_to_personal": true,
   "user_personal_channel_namespace": "personal",
 

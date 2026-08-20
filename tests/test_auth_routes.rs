@@ -40,10 +40,8 @@ async fn test_auth_routes_lifecycle() {
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);
 
-    // --- 1. Test /auth/guest without username (gets auto-generated player-{uuid} username) ---
+    // --- 1. Test /auth/guest (gets auto-generated player-{uuid} username in profile, null in DB) ---
     let resp = client.post(format!("{}/auth/guest", base_url))
-        .header("content-type", "application/json")
-        .body("{}")
         .send().await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let auth_body: RestApiResponse<Value> = resp.json().await.unwrap();
@@ -51,7 +49,7 @@ async fn test_auth_routes_lifecycle() {
     let access_token = data.get("access_token").unwrap().as_str().unwrap().to_string();
     let refresh_token = data.get("refresh_token").unwrap().as_str().unwrap().to_string();
 
-    // Verify the guest user has a player-{uuid} username in both API response and DB
+    // Verify the guest user has a player-{uuid} username in API response and is_guest is true
     let me_resp = client.get(format!("{}/user/me", base_url))
         .bearer_auth(&access_token)
         .send().await.unwrap();
@@ -61,41 +59,38 @@ async fn test_auth_routes_lifecycle() {
     let user_id = me_data.get("id").unwrap().as_str().unwrap().to_string();
     let username = me_data.get("username").unwrap().as_str().unwrap().to_string();
     assert!(username.starts_with("player-"));
+    assert_eq!(me_data.get("is_guest").unwrap().as_bool().unwrap(), true);
 
-    // Check DB directly — guest users now always have username = "player-{uuid}"
+    // Check DB directly — guest users have username = "player-{user_id}" and NULL password_hash in DB
     let db_username: Option<String> = sqlx::query_scalar("SELECT username FROM users WHERE id = $1::uuid")
         .bind(&user_id)
         .fetch_one(&pool).await.unwrap();
-    assert!(
-        db_username.as_deref().map(|u| u.starts_with("player-")).unwrap_or(false),
-        "Guest user should have a player-{{uuid}} username in DB, got: {:?}", db_username
-    );
+    assert_eq!(db_username, Some(format!("player-{}", user_id)));
 
-
-    // --- 2. Test /auth/guest with username ---
-    let guest_name = format!("guest-{}", Uuid::new_v4());
-    let resp_named = client.post(format!("{}/auth/guest", base_url))
-        .json(&json!({ "username": guest_name }))
+    // --- 2. Convert guest into registered user via PATCH /user/me ---
+    let claimed_username = format!("claimed-{}", Uuid::new_v4());
+    let claimed_password = "securepassword123";
+    let claim_resp = client.patch(format!("{}/user/me", base_url))
+        .bearer_auth(&access_token)
+        .json(&json!({
+            "username": claimed_username,
+            "password": claimed_password
+        }))
         .send().await.unwrap();
-    assert_eq!(resp_named.status(), StatusCode::OK);
-    let auth_body_named: RestApiResponse<Value> = resp_named.json().await.unwrap();
-    let access_token_named = auth_body_named.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    assert_eq!(claim_resp.status(), StatusCode::OK);
+    let claim_body: RestApiResponse<Value> = claim_resp.json().await.unwrap();
+    let claim_data = claim_body.0.data.unwrap();
+    assert_eq!(claim_data.get("username").unwrap().as_str().unwrap(), claimed_username);
+    assert_eq!(claim_data.get("is_guest").unwrap().as_bool().unwrap(), false);
 
-    let me_resp_named = client.get(format!("{}/user/me", base_url))
-        .bearer_auth(&access_token_named)
+    // Verify login with claimed credentials works
+    let claim_login_resp = client.post(format!("{}/auth/login", base_url))
+        .json(&json!({
+            "username": claimed_username,
+            "password": claimed_password
+        }))
         .send().await.unwrap();
-    assert_eq!(me_resp_named.status(), StatusCode::OK);
-    let me_body_named: RestApiResponse<Value> = me_resp_named.json().await.unwrap();
-    let data_named = me_body_named.0.data.unwrap();
-    let user_id_named = data_named.get("id").unwrap().as_str().unwrap().to_string();
-    let username_named = data_named.get("username").unwrap().as_str().unwrap().to_string();
-    assert_eq!(username_named, guest_name);
-
-    // Check DB directly
-    let db_username_named: Option<String> = sqlx::query_scalar("SELECT username FROM users WHERE id = $1::uuid")
-        .bind(&user_id_named)
-        .fetch_one(&pool).await.unwrap();
-    assert_eq!(db_username_named, Some(guest_name.clone()));
+    assert_eq!(claim_login_resp.status(), StatusCode::OK);
 
     // --- 3. Test /auth/register (register normal user) ---
     let reg_username = format!("user-{}", Uuid::new_v4());

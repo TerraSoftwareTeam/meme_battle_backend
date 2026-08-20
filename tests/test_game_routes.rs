@@ -2272,25 +2272,41 @@ async fn test_game_handle_conflicts() {
     assert_eq!(status1, StatusCode::OK);
     let token1 = serde_json::from_slice::<RestApiResponse<Value>>(&bytes1).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
 
-    let (status2, bytes2) = send_request(
+    let (status2, _) = send_request(
         &app,
         Method::POST,
-        "/auth/guest",
+        "/auth/register",
         None,
-        Some(&json!({ "username": name2 })),
+        Some(&json!({ "username": name2, "password": "password123" })),
     ).await;
     assert_eq!(status2, StatusCode::OK);
-    let token2 = serde_json::from_slice::<RestApiResponse<Value>>(&bytes2).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
-
-    let (status3, bytes3) = send_request(
+    let (login_status2, login_bytes2) = send_request(
         &app,
         Method::POST,
-        "/auth/guest",
+        "/auth/login",
         None,
-        Some(&json!({ "username": name3 })),
+        Some(&json!({ "username": name2, "password": "password123" })),
+    ).await;
+    assert_eq!(login_status2, StatusCode::OK);
+    let token2 = serde_json::from_slice::<RestApiResponse<Value>>(&login_bytes2).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+
+    let (status3, _) = send_request(
+        &app,
+        Method::POST,
+        "/auth/register",
+        None,
+        Some(&json!({ "username": name3, "password": "password123" })),
     ).await;
     assert_eq!(status3, StatusCode::OK);
-    let token3 = serde_json::from_slice::<RestApiResponse<Value>>(&bytes3).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    let (login_status3, login_bytes3) = send_request(
+        &app,
+        Method::POST,
+        "/auth/login",
+        None,
+        Some(&json!({ "username": name3, "password": "password123" })),
+    ).await;
+    assert_eq!(login_status3, StatusCode::OK);
+    let token3 = serde_json::from_slice::<RestApiResponse<Value>>(&login_bytes3).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
     let claims3 = decode::<Claims>(&token3, &KEYS.decoding, &Validation::default()).unwrap().claims;
     let user_id3 = claims3.sub.clone();
 

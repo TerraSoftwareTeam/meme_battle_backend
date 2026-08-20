@@ -27,6 +27,8 @@ pub struct Config {
     pub centrifugo_api_url: String,
     pub centrifugo_api_key: String,
     
+    pub cors_allowed_origin: String,
+
     pub max_file_size_mb: u32,
 }
 
@@ -73,11 +75,15 @@ impl Config {
             centrifugo_api_key: env::var("CENTRIFUGO_API_KEY")
                 .unwrap_or_else(|_| "CHANGE_ME_API_KEY".to_string()),
 
+            cors_allowed_origin: env::var("CORS_ALLOWED_ORIGIN")
+                .unwrap_or_else(|_| "https://meme.skyfly.hackclub.app".to_string()),
+
             max_file_size_mb: optional_u32_env("MAX_FILE_SIZE_MB", 35),
         };
 
         validate_sensitive_env("JWT_SECRET_KEY")?;
         validate_sensitive_env("ARGON2_SECRET_KEY")?;
+        validate_sensitive_env("HMAC_SECRET_KEY")?;
         validate_sensitive_env("SECRET_SEED_KEY")?;
 
         info!(
@@ -87,6 +93,7 @@ impl Config {
             database_max_connections = config.database_max_connections,
             database_min_connections = config.database_min_connections,
             hackclub_cdn_base_url = %config.hackclub_cdn_base_url,
+            cors_allowed_origin = %config.cors_allowed_origin,
             admin_user_ids = ?config.admin_user_ids,
             "Application configuration loaded"
         );

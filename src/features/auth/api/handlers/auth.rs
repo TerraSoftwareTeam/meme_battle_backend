@@ -6,10 +6,10 @@ use crate::{
     },
     features::auth::api::{
         dto::request::{
-            AuthUserDto, GuestAuthDto, RefreshSessionDto, RegisterAuthUserDto,
+            AuthUserDto, RefreshSessionDto, RegisterAuthUserDto,
         },
         handlers::validation::{
-            validate_auth_user, validate_guest_auth,
+            validate_auth_user,
             validate_refresh_session, validate_register_auth_user,
         },
     },
@@ -54,23 +54,13 @@ pub async fn login_user(
 #[utoipa::path(
     post,
     path = "/auth/guest",
-    request_body = GuestAuthDto,
     responses((status = 200, description = "Authenticate as guest", body = AuthBody)),
     tag = "UserAuth"
 )]
 pub async fn auth_as_guest(
     State(state): State<AuthState>,
-    body_bytes: axum::body::Bytes,
 ) -> Result<impl IntoResponse, AppError> {
-    let guest_auth = if body_bytes.is_empty() {
-        GuestAuthDto { username: None }
-    } else {
-        serde_json::from_slice(&body_bytes)
-            .map_err(|err| AppError::ValidationError(format!("Invalid JSON body: {}", err)))?
-    };
-    validate_guest_auth(&guest_auth)?;
-
-    let auth_body = state.auth_as_guest.execute(guest_auth.into()).await?;
+    let auth_body = state.auth_as_guest.execute().await?;
     Ok(RestApiResponse::success(auth_body))
 }
 
