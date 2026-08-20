@@ -13,12 +13,9 @@ pub struct UserProfile {
 
 impl UserProfile {
     pub fn new(user: User, is_guest: bool) -> Self {
-        let username = user
-            .username
-            .unwrap_or_else(|| format!("player-{}", user.id));
         Self {
             id: user.id,
-            username,
+            username: user.username,
             created_at: user.created_at,
             modified_at: user.modified_at,
             is_guest,

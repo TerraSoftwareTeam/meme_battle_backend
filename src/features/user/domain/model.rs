@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: String,
-    pub username: Option<String>,
+    pub username: String,
     pub created_at: Option<DateTime<Utc>>,
     pub modified_at: Option<DateTime<Utc>>,
 }

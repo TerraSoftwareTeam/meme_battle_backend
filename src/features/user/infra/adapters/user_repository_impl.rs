@@ -41,7 +41,7 @@ const FIND_USER_INFO_QUERY: &str = r#"
 #[derive(Debug, FromRow)]
 struct UserRow {
     id: String,
-    username: Option<String>,
+    username: String,
     created_at: Option<DateTime<Utc>>,
     modified_at: Option<DateTime<Utc>>,
 }
