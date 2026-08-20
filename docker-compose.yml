@@ -80,9 +80,9 @@ services:
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:-CHANGE_ME_API_KEY}
       CENTRIFUGO_ADMIN_PASSWORD: ${CENTRIFUGO_ADMIN_PASSWORD:-CHANGE_ME_ADMIN_PASSWORD}
       CENTRIFUGO_ADMIN_SECRET: ${CENTRIFUGO_ADMIN_SECRET:-CHANGE_ME_ADMIN_SECRET}
-      CENTRIFUGO_ALLOWED_ORIGIN: ${CENTRIFUGO_ALLOWED_ORIGIN:-https://meme.skyfly.hackclub.app}
+      CENTRIFUGO_ALLOWED_ORIGINS: ${CENTRIFUGO_ALLOWED_ORIGINS:-https://meme.skyfly.hackclub.app}
     volumes:
-      - ./centrifuge/config.json:/centrifugo/config.json
+      - ./centrifugo/config.json:/centrifugo/config.json
     ports:
       - "8000:8000"
     command: centrifugo -c config.json
