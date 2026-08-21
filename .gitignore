@@ -49,3 +49,4 @@ flamegraph.svg
 # temporary
 LICENSE
 .mimocode/
+observability/grafana/dashboard.json
