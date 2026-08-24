@@ -1,4 +1,4 @@
-Backend service for the **Meme Battle** game written in Rust. It utilizes Axum, PostgreSQL (via SQLx), and Centrifugo for real-time WebSocket communication.
+Backend service for the **Meme Battle** game written in Rust. It utilizes Axum, PostgreSQL (via SQLx), and Centrifugo for WebSocket communication.
 
 ## Quick Links
 
@@ -14,7 +14,7 @@ Backend service for the **Meme Battle** game written in Rust. It utilizes Axum, 
 * **Why it's used:** Manages live player connections so the Rust backend doesn't have to keep thousands of WebSockets open in memory.
 * **How it works:**
   * Handles client WebSocket connections and authentication tokens.
-  * **Channels:**
+q  * **Channels:**
     * `lobbies` — Global channel for lobby discovery (`LobbyCreated`, `LobbyUpdated`, `LobbyRemoved`).
     * `game:{game_id}` — Room channel for match events (`PlayerJoined`, `PlayerLeft`, `PlayerReadyChanged`, `GameStarted`, `RoundStarted`, `SubmissionReceived`, `RoundPhaseChanged`, `VoteReceived`, `RoundFinished`, `GameFinished`). Timers are calculated by clients from `ends_at` timestamps sent in phase events.
     * `personal:#{user_id}` — Private channel for user-specific events (e.g. `HandUpdated` with dealt cards).
@@ -32,6 +32,25 @@ Backend service for the **Meme Battle** game written in Rust. It utilizes Axum, 
 * **Grafana Tempo:** Tracks each request from start to finish using a unique `trace_id`.
 * **Grafana:** Displays live metrics on the dashboard.
 
+---
+
+## 🚀 Quick Start (Docker Setup)
+
+### 1. Clone the repository
+```bash
+git clone https://github.com
+cd meme_battle_backend
+```
+
+### 2. Copy the environment variables
+```bash
+cp .env.example .env
+```
+
+### 3. Start the project
+```bash
+docker compose up -d --build
+```
 ---
 
 ## Running Tests
