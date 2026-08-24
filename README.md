@@ -34,7 +34,7 @@ q  * **Channels:**
 
 ---
 
-## 🚀 Quick Start (Docker Setup)
+## Quick Start (Docker Setup)
 
 ### 1. Clone the repository
 ```bash
