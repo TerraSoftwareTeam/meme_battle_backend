@@ -6,6 +6,8 @@
   "safety_level": "family_friendly",
   "is_public": true,
   "items": [
+    { "file": "assets/ru_pipidastr.jpeg" },
+    { "file": "assets/low_iq.jpeg" },
     { "file": "assets/ru_druzhko.jpg" },
     { "file": "assets/ru_harold_pain.jpg" },
     { "file": "assets/ru_roll_safe_thinking.jpg" },
