@@ -159,6 +159,7 @@ pub async fn get_game_state(
             list.into_iter()
                 .map(|s| RoundSubmissionDto {
                     id: s.id,
+                    user_id: s.user_id,
                     card: s.card,
                     is_mine: s.is_mine,
                 })

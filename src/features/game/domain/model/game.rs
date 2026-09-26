@@ -64,6 +64,7 @@ pub enum GameEvent {
     VoteRegistered {
         round_id: Uuid,
         voter_id: Uuid,
+        card_id: Uuid,
     },
     RoundFinished {
         round_id: Uuid,

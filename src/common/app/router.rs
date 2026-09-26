@@ -41,16 +41,23 @@ pub static FORBIDDEN_PATTERNS: Lazy<Vec<Regex>> =
     Lazy::new(|| vec![Regex::new(r"(?i)<\s*script\b[^>]*>").unwrap()]);
 
 pub fn create_router(state: AppState) -> Router {
-    // Build a CORS layer that restricts access exclusively to configured origin
-    let allowed_origin = state
-        .config
-        .cors_allowed_origin
-        .parse::<axum::http::HeaderValue>()
-        .unwrap_or_else(|_| {
-            "https://meme.skyfly.hackclub.app"
-                .parse::<axum::http::HeaderValue>()
-                .unwrap()
-        });
+    // Build a CORS layer that supports multiple origins separated by commas
+    let origins_str = &state.config.cors_allowed_origin;
+    let allowed_origins: Vec<axum::http::HeaderValue> = origins_str
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| s.parse::<axum::http::HeaderValue>().ok())
+        .collect();
+
+    let cors_origin = if allowed_origins.is_empty() {
+        tower_http::cors::AllowOrigin::list(vec![
+            "https://meme.skyfly.hackclub.app".parse().unwrap(),
+            "https://new.meme.skyfly.hackclub.app".parse().unwrap(),
+        ])
+    } else {
+        tower_http::cors::AllowOrigin::list(allowed_origins)
+    };
 
     let cors = CorsLayer::new()
         .allow_methods([
@@ -61,7 +68,7 @@ pub fn create_router(state: AppState) -> Router {
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_origin(allowed_origin)
+        .allow_origin(cors_origin)
         .allow_headers([AUTHORIZATION, CONTENT_TYPE, axum::http::header::ACCEPT])
         .allow_credentials(true);
 

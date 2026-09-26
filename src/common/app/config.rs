@@ -76,7 +76,7 @@ impl Config {
                 .unwrap_or_else(|_| "CHANGE_ME_API_KEY".to_string()),
 
             cors_allowed_origin: env::var("CORS_ALLOWED_ORIGIN")
-                .unwrap_or_else(|_| "https://meme.skyfly.hackclub.app".to_string()),
+                .unwrap_or_else(|_| "https://meme.skyfly.hackclub.app,https://new.meme.skyfly.hackclub.app".to_string()),
 
             max_file_size_mb: optional_u32_env("MAX_FILE_SIZE_MB", 35),
         };

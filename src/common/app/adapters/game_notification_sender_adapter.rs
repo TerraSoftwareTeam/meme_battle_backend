@@ -184,12 +184,14 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         game_id: Uuid,
         round_id: Uuid,
         user_id: Uuid,
+        card_id: Uuid,
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
         let payload = RealtimePayload::SubmissionReceived(SubmissionReceivedPayload {
             round_id,
             user_id,
+            card_id,
         });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }
@@ -241,12 +243,14 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         game_id: Uuid,
         round_id: Uuid,
         voter_id: Uuid,
+        card_id: Uuid,
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
         let payload = RealtimePayload::VoteReceived(VoteReceivedPayload {
             round_id,
             voter_id,
+            card_id,
         });
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }

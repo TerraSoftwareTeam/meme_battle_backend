@@ -116,13 +116,14 @@ impl SubmitCardCommand {
                 "SubmissionReceived",
                 serde_json::json!({
                     "round_id": round_id,
-                    "user_id": user_id
+                    "user_id": user_id,
+                    "card_id": card_id
                 }),
             )
             .await?;
 
         self.notification_sender
-            .notify_submission_received(&mut tx, game_id, round_id, user_id, new_version)
+            .notify_submission_received(&mut tx, game_id, round_id, user_id, card_id, new_version)
             .await?;
 
         if round_phase_changed {

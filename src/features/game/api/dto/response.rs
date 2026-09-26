@@ -79,6 +79,7 @@ pub struct ActiveGameInfoDto {
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct RoundSubmissionDto {
     pub id: Uuid,
+    pub user_id: Uuid,
     pub card: GameCard,
     pub is_mine: bool,
 }

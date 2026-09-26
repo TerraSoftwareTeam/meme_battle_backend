@@ -14,6 +14,7 @@ use crate::{
 
 pub struct GameStateSubmission {
     pub id: Uuid,
+    pub user_id: Uuid,
     pub card: GameCard,
     pub is_mine: bool,
 }
@@ -118,6 +119,7 @@ impl GetGameStateQuery {
                     };
                     resolved_subs.push(GameStateSubmission {
                         id: sub.id,
+                        user_id: sub.user_id,
                         card,
                         is_mine,
                     });

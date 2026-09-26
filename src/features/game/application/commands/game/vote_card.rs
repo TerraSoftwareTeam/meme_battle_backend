@@ -139,10 +139,13 @@ impl VoteCardCommand {
         // Collect all events produced in this command invocation
         let mut events: Vec<GameEvent> = Vec::new();
 
+        let card_id = submission.submission_meme_id.or(submission.submission_situation_id).unwrap();
+
         // VoteRegistered is always emitted
         events.push(GameEvent::VoteRegistered {
             round_id,
             voter_id: user_id,
+            card_id,
         });
 
         // 2b. Check if every player has now voted → finish the round
@@ -264,9 +267,9 @@ impl VoteCardCommand {
             // 2. Map to centrifugo realtime envelope and insert into outbox
             match event {
                 GameEvent::LobbyHostIdChanged { .. } => {},
-                GameEvent::VoteRegistered { round_id, voter_id } => {
+                GameEvent::VoteRegistered { round_id, voter_id, card_id } => {
                     self.notification_sender
-                        .notify_vote_received(&mut tx, game_id, *round_id, *voter_id, slot)
+                        .notify_vote_received(&mut tx, game_id, *round_id, *voter_id, *card_id, slot)
                         .await?;
                 }
                 GameEvent::RoundFinished { round_id, winner_user_id, scores, round_scores } => {
@@ -368,9 +371,10 @@ fn event_payload(event: &GameEvent) -> serde_json::Value {
         GameEvent::LobbyHostIdChanged { new_host_id } => json!({
             "new_host_id": new_host_id
         }),
-        GameEvent::VoteRegistered { round_id, voter_id } => json!({
+        GameEvent::VoteRegistered { round_id, voter_id, card_id } => json!({
             "round_id": round_id,
             "voter_id": voter_id,
+            "card_id": card_id,
         }),
         GameEvent::RoundFinished {
             round_id,

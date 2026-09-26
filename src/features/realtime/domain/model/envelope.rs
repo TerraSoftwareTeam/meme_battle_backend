@@ -107,6 +107,7 @@ pub struct RoundPhaseChangedPayload {
 pub struct VoteReceivedPayload {
     pub round_id: Uuid,
     pub voter_id: Uuid,
+    pub card_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +138,7 @@ pub struct RoundStartedPayload {
 pub struct SubmissionReceivedPayload {
     pub round_id: Uuid,
     pub user_id: Uuid,
+    pub card_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -264,7 +264,8 @@ All event notifications sent by the server are wrapped in a Centrifugo `push` co
 ```json
 {
   "round_id": "2bc8f31b-ab34-4bc1-aa8e-da71f28b34c2",
-  "user_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a"
+  "user_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+  "card_id": "e4c7b81f-4d3f-4e3a-9694-82fa06fbcdff"
 }
 ```
 
@@ -285,7 +286,8 @@ All event notifications sent by the server are wrapped in a Centrifugo `push` co
 ```json
 {
   "round_id": "2bc8f31b-ab34-4bc1-aa8e-da71f28b34c2",
-  "voter_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a"
+  "voter_id": "8f7b3b4f-8ce6-4a41-86cc-ef5ef33a1e3a",
+  "card_id": "e4c7b81f-4d3f-4e3a-9694-82fa06fbcdff"
 }
 ```
 

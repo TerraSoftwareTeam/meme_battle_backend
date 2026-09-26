@@ -82,6 +82,7 @@ pub trait GameNotificationSender: Send + Sync {
         game_id: Uuid,
         round_id: Uuid,
         user_id: Uuid,
+        card_id: Uuid,
         version: i64,
     ) -> Result<(), AppError>;
 
@@ -102,6 +103,7 @@ pub trait GameNotificationSender: Send + Sync {
         game_id: Uuid,
         round_id: Uuid,
         voter_id: Uuid,
+        card_id: Uuid,
         version: i64,
     ) -> Result<(), AppError>;
 

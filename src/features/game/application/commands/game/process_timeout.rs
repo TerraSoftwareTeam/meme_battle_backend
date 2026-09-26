@@ -66,6 +66,7 @@ impl ProcessTimeoutCommand {
                         // Find first unused card in hand
                         let unused_cards = self.repo.get_unused_hand_cards(&mut tx, game.id, state.user_id).await?;
                         if let Some(hand_card) = unused_cards.first() {
+                            let card_id = hand_card.meme_id.or(hand_card.situation_id).unwrap();
                             // Auto-submit the card
                             self.repo
                                 .insert_submission(
@@ -89,12 +90,13 @@ impl ProcessTimeoutCommand {
                                     "SubmissionReceived",
                                     json!({
                                         "round_id": round_id,
-                                        "user_id": state.user_id
+                                        "user_id": state.user_id,
+                                        "card_id": card_id
                                     }),
                                 )
                                 .await?;
                             self.notification_sender
-                                .notify_submission_received(&mut tx, game.id, round_id, state.user_id, new_version)
+                                .notify_submission_received(&mut tx, game.id, round_id, state.user_id, card_id, new_version)
                                 .await?;
                         }
                     }
@@ -338,9 +340,10 @@ fn event_payload(event: &GameEvent) -> serde_json::Value {
         GameEvent::LobbyHostIdChanged { new_host_id } => json!({
             "new_host_id": new_host_id
         }),
-        GameEvent::VoteRegistered { round_id, voter_id } => json!({
+        GameEvent::VoteRegistered { round_id, voter_id, card_id } => json!({
             "round_id": round_id,
             "voter_id": voter_id,
+            "card_id": card_id,
         }),
         GameEvent::RoundFinished {
             round_id,
