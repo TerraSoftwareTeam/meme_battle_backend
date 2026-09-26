@@ -2,14 +2,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::features::game::domain::model::{
-    Game, ActiveGame, GameCard, GameMode, GameStatus, PlayerSubmissionState, RoundPhase, ContentSafetyLevel, LanguageCode,
-    MemePack, PackMemeDetails, SituationPack, PackSituation,
+    ActiveGame, ContentSafetyLevel, Game, GameCard, GameMode, GameStatus, LanguageCode, MemePack,
+    PackMemeDetails, PackSituation, PlayerSubmissionState, RoundPhase, SituationPack,
 };
 
 #[derive(Serialize, Deserialize, Clone, Debug, utoipa::ToSchema)]
 pub struct GameDto {
     pub id: Uuid,
-    /// Название игрового лобби
+    pub host_id: Uuid,
     #[schema(example = "Вечерняя битва мемов")]
     pub name: String,
     pub mode: GameMode,
@@ -21,6 +21,7 @@ impl From<Game> for GameDto {
     fn from(game: Game) -> Self {
         Self {
             id: game.id,
+            host_id: game.host_id,
             name: game.name,
             mode: game.mode,
             status: game.status,

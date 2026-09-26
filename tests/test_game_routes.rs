@@ -127,17 +127,17 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         .to_string();
 
     // Decode token IDs using KEY decoding
-    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+    let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
 
-    let claims2 = decode::<Claims>(&token2, &KEYS.decoding, &Validation::default())
+    let claims2 = decode::<Claims>(&token2, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id2 = Uuid::parse_str(&claims2.sub).unwrap();
 
-    let claims3 = decode::<Claims>(&token3, &KEYS.decoding, &Validation::default())
+    let claims3 = decode::<Claims>(&token3, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id3 = Uuid::parse_str(&claims3.sub).unwrap();
@@ -1013,7 +1013,7 @@ async fn test_duplicate_pack_item_returns_conflict() {
 
     let claims = jsonwebtoken::decode::<Claims>(
         &token,
-        &KEYS.decoding,
+        &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret),
         &jsonwebtoken::Validation::default(),
     )
     .unwrap()
@@ -1191,7 +1191,7 @@ async fn test_game_start_deterministic_and_precomputes() {
         .unwrap()
         .to_string();
 
-    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+    let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
@@ -1503,7 +1503,7 @@ async fn test_game_settings_update() {
         .id;
 
     // Create meme pack
-    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+    let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
@@ -1645,15 +1645,15 @@ async fn test_game_play_to_completion_deletes_locks() {
         .unwrap()
         .to_string();
 
-    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+    let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
-    let claims2 = decode::<Claims>(&token2, &KEYS.decoding, &Validation::default())
+    let claims2 = decode::<Claims>(&token2, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id2 = Uuid::parse_str(&claims2.sub).unwrap();
-    let claims3 = decode::<Claims>(&token3, &KEYS.decoding, &Validation::default())
+    let claims3 = decode::<Claims>(&token3, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id3 = Uuid::parse_str(&claims3.sub).unwrap();
@@ -2037,7 +2037,7 @@ async fn test_game_catalog_endpoint() {
         .unwrap()
         .to_string();
 
-    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default())
+    let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
@@ -2307,7 +2307,7 @@ async fn test_game_handle_conflicts() {
     ).await;
     assert_eq!(login_status3, StatusCode::OK);
     let token3 = serde_json::from_slice::<RestApiResponse<Value>>(&login_bytes3).unwrap().0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
-    let claims3 = decode::<Claims>(&token3, &KEYS.decoding, &Validation::default()).unwrap().claims;
+    let claims3 = decode::<Claims>(&token3, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default()).unwrap().claims;
     let user_id3 = claims3.sub.clone();
 
     // 2. Setup packs
@@ -2502,7 +2502,6 @@ async fn test_game_active_and_leave_routes() {
     let create_resp2: RestApiResponse<GameDto> = serde_json::from_slice(&create_bytes2).unwrap();
     assert!(create_resp2.0.data.is_some());
 
-    // 10. User 2 leaves Game 2 via /games/leave (active-based route)
     let (leave_status2, _) = send_request::<()>(&app, Method::POST, "/games/leave", Some(&token2), None).await;
     assert_eq!(leave_status2, StatusCode::OK);
 

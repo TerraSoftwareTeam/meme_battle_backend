@@ -243,6 +243,7 @@ impl ProcessTimeoutCommand {
                         .await?;
 
                     match event {
+                        GameEvent::LobbyHostIdChanged { .. } => {},
                         GameEvent::RoundFinished { round_id, winner_user_id, scores, round_scores } => {
                             self.notification_sender
                                 .notify_round_finished(
@@ -334,6 +335,9 @@ impl ProcessTimeoutCommand {
 
 fn event_payload(event: &GameEvent) -> serde_json::Value {
     match event {
+        GameEvent::LobbyHostIdChanged { new_host_id } => json!({
+            "new_host_id": new_host_id
+        }),
         GameEvent::VoteRegistered { round_id, voter_id } => json!({
             "round_id": round_id,
             "voter_id": voter_id,

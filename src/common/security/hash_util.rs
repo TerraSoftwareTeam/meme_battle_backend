@@ -64,7 +64,7 @@ pub fn verify_password(password_hash: &str, password: &str) -> bool {
 type HmacSha256 = Hmac<Sha256>;
 
 pub fn hash_refresh_token(token: &str) -> Result<String, InvalidLength> {
-    let mut mac = HmacSha256::new_from_slice(&KEYS.hmac_secret)?;
+    let mut mac = HmacSha256::new_from_slice(&KEYS.jwt_secret)?;
 
     mac.update(token.as_bytes());
 

@@ -82,8 +82,8 @@ impl Config {
         };
 
         validate_sensitive_env("JWT_SECRET_KEY")?;
-        validate_sensitive_env("ARGON2_SECRET_KEY")?;
         validate_sensitive_env("HMAC_SECRET_KEY")?;
+        validate_sensitive_env("ARGON2_SECRET_KEY")?;
         validate_sensitive_env("SECRET_SEED_KEY")?;
 
         info!(

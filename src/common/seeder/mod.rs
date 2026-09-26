@@ -408,7 +408,7 @@ impl Seeder {
             warn!("HACKCLUB_CDN_API_KEY is not set, generating local placeholder for seed asset");
             StoredFile {
                 provider: MediaProvider::HackClubCdn,
-                provider_file_id: format!("seed_{}", hash),
+                provider_file_id: format!("seed_{}", uuid::Uuid::new_v4()),
                 url: format!("{}/local-seeds/{}/{}", self.config.hackclub_cdn_base_url, hash, filename),
                 filename: filename.to_string(),
                 content_type: content_type.to_string(),

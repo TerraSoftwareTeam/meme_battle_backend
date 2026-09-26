@@ -103,11 +103,11 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     let auth_body3: RestApiResponse<Value> = resp3.json().await.unwrap();
     let token3 = auth_body3.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
 
-    let claims1 = decode::<Claims>(&token1, &KEYS.decoding, &Validation::default()).unwrap().claims;
+    let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default()).unwrap().claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
-    let claims2 = decode::<Claims>(&token2, &KEYS.decoding, &Validation::default()).unwrap().claims;
+    let claims2 = decode::<Claims>(&token2, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default()).unwrap().claims;
     let user_id2 = Uuid::parse_str(&claims2.sub).unwrap();
-    let claims3 = decode::<Claims>(&token3, &KEYS.decoding, &Validation::default()).unwrap().claims;
+    let claims3 = decode::<Claims>(&token3, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default()).unwrap().claims;
     let user_id3 = Uuid::parse_str(&claims3.sub).unwrap();
 
     // 6. Upload 6 files to our media API using mock CDN (required: P=3, H=1, R=1 -> memes: 3*1 + 3*1 = 6)

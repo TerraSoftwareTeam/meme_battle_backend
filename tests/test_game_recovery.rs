@@ -212,13 +212,38 @@ async fn subscribe_to_channel(
     resp
 }
 
+fn mock_cdn_router() -> axum::Router {
+    axum::Router::new()
+        .route("/api/v4/upload", axum::routing::post(handle_mock_upload))
+}
+
+async fn handle_mock_upload(_bytes: axum::body::Bytes) -> axum::Json<serde_json::Value> {
+    let file_id = uuid::Uuid::new_v4().to_string();
+    axum::Json(serde_json::json!({
+        "id": file_id,
+        "filename": "uploaded_meme.png",
+        "size": 1234,
+        "content_type": "image/png",
+        "url": format!("https://cdn.hackclub.com/{}.png", file_id)
+    }))
+}
+
 #[tokio::test]
 async fn test_centrifugo_websocket_replication_and_recovery() {
     dotenvy::dotenv().ok();
     let _ = tracing_subscriber::fmt::try_init();
 
     // ── 1. Setup Backend Server ───────────────────────────────────────────────
-    let config = Config::from_env().unwrap();
+    let mut config = Config::from_env().unwrap();
+
+    let cdn_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let cdn_addr = cdn_listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(cdn_listener, mock_cdn_router()).await.unwrap();
+    });
+    config.hackclub_cdn_base_url = format!("http://{}", cdn_addr);
+    config.hackclub_cdn_api_key = Some("sk_cdn_test_key".to_string());
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .min_connections(1)
@@ -265,7 +290,7 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
             .to_string();
 
         let claims: Claims =
-            decode::<Claims>(&token, &KEYS.decoding, &jsonwebtoken::Validation::default())
+            decode::<Claims>(&token, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &jsonwebtoken::Validation::default())
                 .unwrap()
                 .claims;
         user_ids.push(Uuid::parse_str(&claims.sub).unwrap());

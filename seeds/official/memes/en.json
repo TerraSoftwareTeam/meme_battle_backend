@@ -6,6 +6,7 @@
   "safety_level": "family_friendly",
   "is_public": true,
   "items": [
+    { "file": "assets/low_iq.jpeg" },
     { "file": "assets/drake_hotline_bling.jpg" },
     { "file": "assets/two_buttons.jpg" },
     { "file": "assets/distracted_boyfriend.jpg" },

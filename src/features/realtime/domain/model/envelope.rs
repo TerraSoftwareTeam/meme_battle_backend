@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub enum RealtimeEventType {
     PlayerJoined,
     PlayerLeft,
+    LobbyHostIdChanged,
     PlayerReadyChanged,
     GameStarted,
     RoundStarted,
@@ -201,10 +202,16 @@ pub struct LobbyRemovedPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LobbyHostIdChangedPayload {
+    pub new_host_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RealtimePayload {
     PlayerJoined(PlayerJoinedPayload),
     PlayerLeft(PlayerLeftPayload),
+    LobbyHostIdChanged(LobbyHostIdChangedPayload),
     PlayerReadyChanged(PlayerReadyChangedPayload),
     RoundPhaseChanged(RoundPhaseChangedPayload),
     VoteReceived(VoteReceivedPayload),
@@ -227,6 +234,7 @@ impl RealtimePayload {
         match self {
             RealtimePayload::PlayerJoined(_) => RealtimeEventType::PlayerJoined,
             RealtimePayload::PlayerLeft(_) => RealtimeEventType::PlayerLeft,
+            RealtimePayload::LobbyHostIdChanged(_) => RealtimeEventType::LobbyHostIdChanged,
             RealtimePayload::PlayerReadyChanged(_) => RealtimeEventType::PlayerReadyChanged,
             RealtimePayload::RoundPhaseChanged(_) => RealtimeEventType::RoundPhaseChanged,
             RealtimePayload::VoteReceived(_) => RealtimeEventType::VoteReceived,

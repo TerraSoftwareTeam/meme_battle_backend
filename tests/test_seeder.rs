@@ -19,7 +19,7 @@ async fn test_seeder_situations_and_memes_lifecycle() {
     let _ = tracing_subscriber::fmt::try_init();
 
     // 1. Setup DB pool
-    let config = Config::from_env().unwrap();
+    let mut config = Config::from_env().unwrap(); config.hackclub_cdn_api_key = None;
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .min_connections(1)
@@ -41,7 +41,7 @@ async fn test_seeder_situations_and_memes_lifecycle() {
     fs::create_dir_all(&assets_dir).unwrap();
 
     // Copy a sample asset for memes
-    let sample_image_bytes = b"fake_png_image_binary_data_for_test";
+    let sample_image_bytes = format!("fake_png_{}", Uuid::new_v4()).into_bytes();
     let test_meme_path = assets_dir.join("test_meme.png");
     fs::write(&test_meme_path, sample_image_bytes).unwrap();
 
@@ -194,7 +194,7 @@ async fn test_seeder_situations_and_memes_lifecycle() {
 #[tokio::test]
 async fn test_seeder_reactivation_and_in_config_duplicates() {
     dotenvy::dotenv().ok();
-    let config = Config::from_env().unwrap();
+    let mut config = Config::from_env().unwrap(); config.hackclub_cdn_api_key = None;
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .min_connections(1)
@@ -274,7 +274,7 @@ async fn test_seeder_reactivation_and_in_config_duplicates() {
 #[tokio::test]
 async fn test_seeder_missing_asset_fails_gracefully() {
     dotenvy::dotenv().ok();
-    let config = Config::from_env().unwrap();
+    let mut config = Config::from_env().unwrap(); config.hackclub_cdn_api_key = None;
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .min_connections(1)
@@ -315,7 +315,7 @@ async fn test_seeder_missing_asset_fails_gracefully() {
 #[tokio::test]
 async fn test_seeder_pack_metadata_updates() {
     dotenvy::dotenv().ok();
-    let config = Config::from_env().unwrap();
+    let mut config = Config::from_env().unwrap(); config.hackclub_cdn_api_key = None;
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .min_connections(1)
@@ -378,7 +378,7 @@ async fn test_seeder_pack_metadata_updates() {
 #[tokio::test]
 async fn test_seeder_game_queries_filter_out_deactivated_cards() {
     dotenvy::dotenv().ok();
-    let config = Config::from_env().unwrap();
+    let mut config = Config::from_env().unwrap(); config.hackclub_cdn_api_key = None;
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .min_connections(1)
@@ -500,7 +500,7 @@ async fn test_seeder_is_official_flag_on_official_and_custom_packs() {
     dotenvy::dotenv().ok();
     let _ = tracing_subscriber::fmt::try_init();
 
-    let config = Config::from_env().unwrap();
+    let mut config = Config::from_env().unwrap(); config.hackclub_cdn_api_key = None;
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .min_connections(1)

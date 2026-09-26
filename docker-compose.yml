@@ -22,8 +22,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otelcol:4318
       OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-local-env-jwt-secret-32-bytes}
+      HMAC_SECRET_KEY: ${HMAC_SECRET_KEY:-change-me-in-local-env-jwt-secret-32-bytes}
       ARGON2_SECRET_KEY: ${ARGON2_SECRET_KEY:-change-me-in-local-env-argon2-secret-32}
-      HMAC_SECRET_KEY: ${HMAC_SECRET_KEY:-change-me-in-local-env-hmac-secret-32}
       SECRET_SEED_KEY: ${SECRET_SEED_KEY}
       DEFAULT_ADMIN_USER_ID: ${DEFAULT_ADMIN_USER_ID:-00000000-0000-0000-0000-000000000001}
       HACKCLUB_CDN_API_KEY: ${HACKCLUB_CDN_API_KEY}
@@ -76,7 +76,7 @@ services:
     container_name: centrifugo
     restart: unless-stopped
     environment:
-      CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_HMAC_SECRET_KEY:-dummyjwtsecretkeydummyjwtsecretkeydummyjwtsecretkey}
+      CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${HMAC_SECRET_KEY:-change-me-in-local-env-hmac-secret-32-bytes}
       CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY:-CHANGE_ME_API_KEY}
       CENTRIFUGO_ADMIN_PASSWORD: ${CENTRIFUGO_ADMIN_PASSWORD:-CHANGE_ME_ADMIN_PASSWORD}
       CENTRIFUGO_ADMIN_SECRET: ${CENTRIFUGO_ADMIN_SECRET:-CHANGE_ME_ADMIN_SECRET}

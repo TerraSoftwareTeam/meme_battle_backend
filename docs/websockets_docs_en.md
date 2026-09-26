@@ -401,3 +401,13 @@ Centrifugo supports automatic state recovery after temporary network disconnecti
   }
 }
 ```
+
+### LobbyHostIdChanged (`LobbyHostIdChanged`)
+* **Channel**: `game:<game_id>`
+* **Description**: The creator (host) left the lobby and host privileges have been reassigned to the first remaining player.
+```json
+{
+  "event_type": "LobbyHostIdChanged",
+  "new_host_id": "8b517a26-9a29-4d8e-9d2a-36429dbde835"
+}
+```

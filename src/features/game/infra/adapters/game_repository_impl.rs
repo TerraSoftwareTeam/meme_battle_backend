@@ -458,6 +458,36 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
+    async fn update_game_host(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        new_host_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query("UPDATE games SET host_id = $1 WHERE id = $2")
+            .bind(new_host_id)
+            .bind(game_id)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update game host: {}", e);
+                AppError::InternalError
+            })?;
+        Ok(())
+    }
+
+    async fn delete_game(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<(), AppError> {
+        sqlx::query("DELETE FROM games WHERE id = $1").bind(game_id).execute(&mut **tx).await.map_err(|e| {
+            tracing::error!("Failed to delete game: {}", e);
+            AppError::InternalError
+        })?;
+        Ok(())
+    }
+
     async fn find_game_for_update(
         &self,
         tx: &mut Transaction<'_, Postgres>,

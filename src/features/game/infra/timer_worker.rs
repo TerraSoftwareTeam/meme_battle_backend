@@ -160,6 +160,8 @@ mod tests {
         async fn create_game(&self, _tx: &mut Transaction<'_, Postgres>, _host_id: Uuid, _name: String, _mode: GameMode, _max_rounds: i32, _hand_size: i32) -> Result<Game, AppError> { todo!() }
         async fn add_selected_situation_pack(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _pack_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn add_selected_meme_pack(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _pack_id: Uuid) -> Result<(), AppError> { todo!() }
+        async fn update_game_host(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _new_host_id: Uuid) -> Result<(), AppError> { todo!() }
+        async fn delete_game(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn find_game_for_update(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<Option<Game>, AppError> { todo!() }
         async fn increment_game_version(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<i64, AppError> { todo!() }
         async fn update_game_status(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _status: GameStatus) -> Result<(), AppError> { todo!() }
@@ -238,6 +240,7 @@ mod tests {
 
     #[async_trait]
     impl GameNotificationSender for MockGameNotificationSender {
+        async fn notify_lobby_host_changed(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _new_host_id: Uuid, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_player_joined(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _handle: String, _players_count: i32, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_player_left(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _players_count: i32, _version: i64) -> Result<(), AppError> { todo!() }
         async fn notify_player_ready_changed(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _is_ready: bool, _version: i64) -> Result<(), AppError> { todo!() }

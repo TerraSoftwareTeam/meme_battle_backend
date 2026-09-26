@@ -263,6 +263,7 @@ impl VoteCardCommand {
 
             // 2. Map to centrifugo realtime envelope and insert into outbox
             match event {
+                GameEvent::LobbyHostIdChanged { .. } => {},
                 GameEvent::VoteRegistered { round_id, voter_id } => {
                     self.notification_sender
                         .notify_vote_received(&mut tx, game_id, *round_id, *voter_id, slot)
@@ -364,6 +365,9 @@ impl VoteCardCommand {
 /// and forwarded through the Centrifugo Outbox.
 fn event_payload(event: &GameEvent) -> serde_json::Value {
     match event {
+        GameEvent::LobbyHostIdChanged { new_host_id } => json!({
+            "new_host_id": new_host_id
+        }),
         GameEvent::VoteRegistered { round_id, voter_id } => json!({
             "round_id": round_id,
             "voter_id": voter_id,

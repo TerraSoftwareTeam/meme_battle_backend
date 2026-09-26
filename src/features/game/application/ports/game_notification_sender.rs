@@ -26,6 +26,14 @@ pub trait GameNotificationSender: Send + Sync {
         version: i64,
     ) -> Result<(), AppError>;
 
+    async fn notify_lobby_host_changed(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        new_host_id: Uuid,
+        version: i64,
+    ) -> Result<(), AppError>;
+
     async fn notify_player_ready_changed(
         &self,
         tx: &mut Transaction<'_, Postgres>,

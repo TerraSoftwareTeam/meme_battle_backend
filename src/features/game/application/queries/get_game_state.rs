@@ -52,6 +52,11 @@ impl GetGameStateQuery {
         let round_id = current_round.as_ref().map(|r| r.id);
 
         let players = self.repo.get_players_with_submissions(game_id, round_id).await?;
+
+        if !players.iter().any(|p| p.user_id == user_id) {
+            return Err(AppError::Forbidden("You are not a player in this game".to_string()));
+        }
+
         let my_hand = self.repo.get_player_hand(game_id, user_id).await?;
 
         let mut resolved_my_hand = Vec::new();

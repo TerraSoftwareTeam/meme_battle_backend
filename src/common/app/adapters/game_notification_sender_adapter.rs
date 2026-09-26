@@ -67,6 +67,22 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
     }
 
+    async fn notify_lobby_host_changed(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        new_host_id: Uuid,
+        version: i64,
+    ) -> Result<(), AppError> {
+        let channel = format!("game:{}", game_id);
+        let payload = RealtimePayload::LobbyHostIdChanged(
+            crate::features::realtime::domain::model::LobbyHostIdChangedPayload {
+                new_host_id,
+            }
+        );
+        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+    }
+
     async fn notify_player_ready_changed(
         &self,
         tx: &mut Transaction<'_, Postgres>,

@@ -402,3 +402,13 @@ sequenceDiagram
   }
 }
 ```
+
+### LobbyHostIdChanged (`LobbyHostIdChanged`)
+* **Канал**: `game:<game_id>`
+* **Описание**: Создатель лобби (хост) вышел из игры, и права хоста были переданы следующему игроку.
+```json
+{
+  "event_type": "LobbyHostIdChanged",
+  "new_host_id": "8b517a26-9a29-4d8e-9d2a-36429dbde835"
+}
+```

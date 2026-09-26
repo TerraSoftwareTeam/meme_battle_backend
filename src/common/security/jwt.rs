@@ -21,32 +21,30 @@ pub static KEYS: LazyLock<Keys> = LazyLock::new(|| {
     dotenvy::dotenv().ok();
 
     let jwt_secret = env::var("JWT_SECRET_KEY").expect("JWT_SECRET_KEY must be set");
+    let hmac_secret = env::var("HMAC_SECRET_KEY").unwrap_or_else(|_| env::var("JWT_SECRET_KEY").expect("HMAC_SECRET_KEY or JWT_SECRET_KEY must be set"));
     let argon_secret = env::var("ARGON2_SECRET_KEY").expect("ARGON2_SECRET_KEY must be set");
-    let hmac_secret = env::var("HMAC_SECRET_KEY").expect("HMAC_SECRET_KEY must be set");
 
     Keys::new(
         jwt_secret.as_bytes(),
-        argon_secret.as_bytes(),
         hmac_secret.as_bytes(),
+        argon_secret.as_bytes(),
     )
 });
 
 /// Keys is a struct that holds the encoding and decoding keys for JWT.
 pub struct Keys {
-    pub encoding: EncodingKey,
-    pub decoding: DecodingKey,
-    pub argon_secret: Vec<u8>,
+    pub jwt_secret: Vec<u8>,
     pub hmac_secret: Vec<u8>,
+    pub argon_secret: Vec<u8>,
 }
 
 /// The Keys struct is used to create the encoding and decoding keys for JWT.
 impl Keys {
-    fn new(secret: &[u8], argon_secret: &[u8], hmac_secret: &[u8]) -> Self {
+    fn new(secret: &[u8], hmac_secret: &[u8], argon_secret: &[u8]) -> Self {
         Self {
-            encoding: EncodingKey::from_secret(secret),
-            decoding: DecodingKey::from_secret(secret),
-            argon_secret: argon_secret.to_vec(),
+            jwt_secret: secret.to_vec(),
             hmac_secret: hmac_secret.to_vec(),
+            argon_secret: argon_secret.to_vec(),
         }
     }
 }
@@ -116,7 +114,7 @@ pub fn make_jwt_token(user_id: &str, role: &Role) -> Result<String, AppError> {
         role: role.clone(),
         ..Default::default()
     };
-    encode(&Header::default(), &claims, &KEYS.encoding).map_err(|_| AppError::TokenCreation)
+    encode(&Header::default(), &claims, &EncodingKey::from_secret(&KEYS.jwt_secret)).map_err(|_| AppError::TokenCreation)
 }
 
 /// It used to generate a random string for refresh tokens (opaque token).
@@ -150,7 +148,7 @@ where
 
     // Validate and decode the token.
     let token_data =
-        decode::<Claims>(token, &KEYS.decoding, &Validation::default()).map_err(|err| {
+        decode::<Claims>(token, &DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default()).map_err(|err| {
             tracing::error!("Error decoding token: {:?}", err);
             AppError::InvalidToken.into_response()
         })?;
@@ -198,7 +196,7 @@ pub fn make_centrifugo_connect_token(user_id: &str) -> Result<String, AppError> 
         sub: user_id.to_string(),
         exp,
     };
-    encode(&Header::default(), &claims, &KEYS.encoding).map_err(|_| AppError::TokenCreation)
+    encode(&Header::default(), &claims, &EncodingKey::from_secret(&KEYS.hmac_secret)).map_err(|_| AppError::TokenCreation)
 }
 
 pub fn make_centrifugo_subscribe_token(user_id: &str, channel: &str) -> Result<String, AppError> {
@@ -208,5 +206,5 @@ pub fn make_centrifugo_subscribe_token(user_id: &str, channel: &str) -> Result<S
         channel: channel.to_string(),
         exp,
     };
-    encode(&Header::default(), &claims, &KEYS.encoding).map_err(|_| AppError::TokenCreation)
+    encode(&Header::default(), &claims, &EncodingKey::from_secret(&KEYS.hmac_secret)).map_err(|_| AppError::TokenCreation)
 }

@@ -177,8 +177,23 @@ async fn request_response_inspecter(
     }
 
     let (parts, body) = req.into_parts();
-    let bytes = request_inspect_print("request", log_enabled, body).await?;
-    let req = Request::from_parts(parts, Body::from(bytes));
+    
+    // Do not collect or inspect multipart or large binary bodies
+    let is_multipart = parts.headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.starts_with("multipart/form-data"))
+        .unwrap_or(false);
+
+    let req = if is_multipart {
+        if log_enabled {
+            tracing::info!("request body = <multipart/form-data>");
+        }
+        Request::from_parts(parts, body)
+    } else {
+        let bytes = request_inspect_print("request", log_enabled, body).await?;
+        Request::from_parts(parts, Body::from(bytes))
+    };
 
     let mut res = next.run(req).await;
     if log_enabled && tracing::enabled!(tracing::Level::DEBUG) {

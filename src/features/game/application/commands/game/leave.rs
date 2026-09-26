@@ -48,29 +48,60 @@ impl LeaveGameCommand {
 
         let remaining_players_count = (players.len() as i32) - 1;
 
-        let new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
+        if remaining_players_count == 0 {
+            // Delete game completely if empty
+            self.repo.delete_game(&mut tx, game_id).await?;
+        } else {
+            let mut new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
 
-        self.repo
-            .insert_game_event(
-                &mut tx,
-                Uuid::new_v4(),
-                game_id,
-                new_version,
-                "PlayerLeft",
-                serde_json::json!({
-                    "user_id": user_id,
-                    "players_count": remaining_players_count,
-                }),
-            )
-            .await?;
+            if game.host_id == user_id {
+                // Host left, assign new host to the first remaining player
+                let remaining_players: Vec<_> = players.into_iter().filter(|p| p.user_id != user_id).collect();
+                if let Some(new_host) = remaining_players.first() {
+                    let new_host_id = new_host.user_id;
+                    self.repo.update_game_host(&mut tx, game_id, new_host_id).await?;
+                    
+                    self.repo.insert_game_event(
+                        &mut tx,
+                        Uuid::new_v4(),
+                        game_id,
+                        new_version,
+                        "LobbyHostIdChanged",
+                        serde_json::json!({
+                            "new_host_id": new_host_id,
+                        }),
+                    ).await?;
 
-        self.notification_sender
-            .notify_player_left(&mut tx, game_id, user_id, remaining_players_count, new_version)
-            .await?;
+                    self.notification_sender
+                        .notify_lobby_host_changed(&mut tx, game_id, new_host_id, new_version)
+                        .await?;
+                    
+                    new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
+                }
+            }
 
-        self.notification_sender
-            .notify_lobby_updated(&mut tx, game_id, remaining_players_count)
-            .await?;
+            self.repo
+                .insert_game_event(
+                    &mut tx,
+                    Uuid::new_v4(),
+                    game_id,
+                    new_version,
+                    "PlayerLeft",
+                    serde_json::json!({
+                        "user_id": user_id,
+                        "players_count": remaining_players_count,
+                    }),
+                )
+                .await?;
+
+            self.notification_sender
+                .notify_player_left(&mut tx, game_id, user_id, remaining_players_count, new_version)
+                .await?;
+
+            self.notification_sender
+                .notify_lobby_updated(&mut tx, game_id, remaining_players_count)
+                .await?;
+        }
 
         tx.commit().await?;
         Ok(())

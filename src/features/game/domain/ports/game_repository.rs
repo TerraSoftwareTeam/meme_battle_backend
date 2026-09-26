@@ -75,6 +75,19 @@ pub trait GameRepository: Send + Sync {
         pack_id: Uuid,
     ) -> Result<(), AppError>;
 
+    async fn update_game_host(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        new_host_id: Uuid,
+    ) -> Result<(), AppError>;
+
+    async fn delete_game(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<(), AppError>;
+
     async fn find_game_for_update(
         &self,
         tx: &mut Transaction<'_, Postgres>,

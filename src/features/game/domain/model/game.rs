@@ -58,6 +58,9 @@ pub struct GamePlayer {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload", rename_all = "PascalCase")]
 pub enum GameEvent {
+    LobbyHostIdChanged {
+        new_host_id: Uuid,
+    },
     VoteRegistered {
         round_id: Uuid,
         voter_id: Uuid,
@@ -79,6 +82,7 @@ pub enum GameEvent {
 impl GameEvent {
     pub fn event_type(&self) -> &'static str {
         match self {
+            GameEvent::LobbyHostIdChanged { .. } => "LobbyHostIdChanged",
             GameEvent::VoteRegistered { .. } => "VoteRegistered",
             GameEvent::RoundFinished { .. } => "RoundFinished",
             GameEvent::GameFinished { .. } => "GameFinished",
@@ -129,6 +133,7 @@ impl GameAggregate {
                     self.status = GameStatus::Finished;
                 }
                 GameEvent::VoteRegistered { .. } => {}
+                GameEvent::LobbyHostIdChanged { .. } => {}
             }
         }
     }
