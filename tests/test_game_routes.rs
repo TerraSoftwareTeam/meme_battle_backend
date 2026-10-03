@@ -1472,20 +1472,18 @@ async fn test_game_settings_update() {
         .unwrap()
         .to_string();
 
-    // Create situation pack
+    // Create situation pack with 25 prompts
+    let mut prompts = Vec::new();
+    for i in 1..=25 {
+        prompts.push(format!("Settings Situation {}", i));
+    }
     let sit_create = CreateSituationPackRequest {
         name: "Settings Test Situations".to_string(),
         description: None,
         language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
-        prompts: vec![
-            "S1".to_string(),
-            "S2".to_string(),
-            "S3".to_string(),
-            "S4".to_string(),
-            "S5".to_string(),
-        ],
+        prompts,
     };
     let (_, sb) = send_request(
         &app,
@@ -1502,19 +1500,31 @@ async fn test_game_settings_update() {
         .unwrap()
         .id;
 
-    // Create meme pack
+    // Create meme pack with 20 memes
     let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
         .unwrap()
         .claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
-    sqlx::query("INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility) VALUES (4001, $1, 'hackclub_cdn', 'p_41', 'https://example.com/41.png', '41.png', 'image/png', 1024, 'pending', 'private') ON CONFLICT DO NOTHING").bind(user_id1).execute(&pool).await.unwrap();
+    let mut media_ids = Vec::new();
+    for id in 4001..=4020 {
+        sqlx::query("INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility) VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private') ON CONFLICT DO NOTHING")
+            .bind(id as i64)
+            .bind(user_id1)
+            .bind(format!("p_{}", id))
+            .bind(format!("https://example.com/{}.png", id))
+            .bind(format!("{}.png", id))
+            .execute(&pool)
+            .await
+            .unwrap();
+        media_ids.push(id as i64);
+    }
     let meme_create = CreateMemePackRequest {
         name: "Settings Test Memes".to_string(),
         description: None,
         language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
-        media_ids: vec![4001],
+        media_ids,
     };
     let (_, bm) = send_request(
         &app,
@@ -2312,7 +2322,7 @@ async fn test_game_handle_conflicts() {
 
     // 2. Setup packs
     let mut media_ids = Vec::new();
-    for id in 4001..=4006 {
+    for id in 4001..=4020 {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2::uuid, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
@@ -2359,7 +2369,13 @@ async fn test_game_handle_conflicts() {
             language_code: LanguageCode::Ru,
             safety_level: ContentSafetyLevel::FamilyFriendly,
             is_public: true,
-            prompts: vec!["Prompt 1".to_string(), "Prompt 2".to_string()],
+            prompts: vec![
+                "Prompt 1".to_string(),
+                "Prompt 2".to_string(),
+                "Prompt 3".to_string(),
+                "Prompt 4".to_string(),
+                "Prompt 5".to_string(),
+            ],
         }),
     )
     .await;
@@ -2431,7 +2447,7 @@ async fn test_game_handle_conflicts() {
 
 #[tokio::test]
 async fn test_game_active_and_leave_routes() {
-    let (_pool, app) = setup_db_and_router().await;
+    let (pool, app) = setup_db_and_router().await;
 
     // 1. Create Guest Users
     let (status1, bytes1) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
@@ -2444,6 +2460,72 @@ async fn test_game_active_and_leave_routes() {
     let auth_resp2: RestApiResponse<Value> = serde_json::from_slice(&bytes2).unwrap();
     let token2 = auth_resp2.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
 
+    let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default())
+        .unwrap()
+        .claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
+
+    let mut media_ids = Vec::new();
+    for id in 4101..=4120 {
+        sqlx::query(
+            "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
+             VALUES ($1, $2::uuid, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
+             ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(id as i64)
+        .bind(user_id1)
+        .bind("hackclub_cdn")
+        .bind(format!("prov_active_id_{}", id))
+        .bind(format!("https://example.com/active_{}.png", id))
+        .bind(format!("meme_active_{}.png", id))
+        .execute(&pool)
+        .await
+        .unwrap();
+        media_ids.push(id as i64);
+    }
+
+    let (status_create_meme, bytes_create_meme) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/memes",
+        Some(&token1),
+        Some(&CreateMemePackRequest {
+            name: "Active Meme Pack".to_string(),
+            description: Some("Description".to_string()),
+            language_code: LanguageCode::Ru,
+            safety_level: ContentSafetyLevel::FamilyFriendly,
+            is_public: true,
+            media_ids,
+        }),
+    )
+    .await;
+    assert_eq!(status_create_meme, StatusCode::OK);
+    let meme_pack_id = serde_json::from_slice::<RestApiResponse<CreateMemePackResponse>>(&bytes_create_meme).unwrap().0.data.unwrap().id;
+
+    let (status_create_sit, bytes_create_sit) = send_request(
+        &app,
+        Method::POST,
+        "/games/packs/situations",
+        Some(&token1),
+        Some(&CreateSituationPackRequest {
+            name: "Active Situation Pack".to_string(),
+            description: Some("Description".to_string()),
+            language_code: LanguageCode::Ru,
+            safety_level: ContentSafetyLevel::FamilyFriendly,
+            is_public: true,
+            prompts: vec![
+                "Prompt 1".to_string(),
+                "Prompt 2".to_string(),
+                "Prompt 3".to_string(),
+                "Prompt 4".to_string(),
+                "Prompt 5".to_string(),
+            ],
+        }),
+    )
+    .await;
+    assert_eq!(status_create_sit, StatusCode::OK);
+    let sit_pack_id = serde_json::from_slice::<RestApiResponse<CreateSituationPackResponse>>(&bytes_create_sit).unwrap().0.data.unwrap().id;
+
     // 1. Initial check: neither user is in an active game
     let (status, bytes) = send_request::<()>(&app, Method::GET, "/games/active", Some(&token1), None).await;
     assert_eq!(status, StatusCode::OK);
@@ -2454,8 +2536,8 @@ async fn test_game_active_and_leave_routes() {
     let create_payload = json!({
         "name": "Active Lobby 1",
         "mode": "situation_to_meme",
-        "selected_situation_pack_ids": [],
-        "selected_meme_pack_ids": [],
+        "selected_situation_pack_ids": vec![sit_pack_id],
+        "selected_meme_pack_ids": vec![meme_pack_id],
         "max_rounds": 3,
         "hand_size": 5
     });

@@ -84,12 +84,78 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
         tokens.push(token);
     }
 
+    let user_id1: Uuid = sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let mut media_ids = Vec::new();
+    for id in 8101..=8120 {
+        sqlx::query(
+            "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
+             VALUES ($1, $2, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
+             ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(id as i64)
+        .bind(user_id1)
+        .bind("hackclub_cdn")
+        .bind(format!("p_ws_{}", id))
+        .bind(format!("https://example.com/ws_{}.png", id))
+        .bind(format!("ws_{}.png", id))
+        .execute(&pool)
+        .await
+        .unwrap();
+        media_ids.push(id as i64);
+    }
+
+    let create_meme_resp = client
+        .post(format!("{}/games/packs/memes", base_url))
+        .bearer_auth(&tokens[0])
+        .json(&json!({
+            "name": "WS Meme Pack",
+            "description": "Description",
+            "language_code": "ru",
+            "safety_level": "family_friendly",
+            "is_public": true,
+            "media_ids": media_ids
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_meme_resp.status(), StatusCode::OK);
+    let meme_pack_resp: RestApiResponse<Value> = create_meme_resp.json().await.unwrap();
+    let meme_pack_id = Uuid::parse_str(meme_pack_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+
+    let create_sit_resp = client
+        .post(format!("{}/games/packs/situations", base_url))
+        .bearer_auth(&tokens[0])
+        .json(&json!({
+            "name": "WS Situation Pack",
+            "description": "Description",
+            "language_code": "ru",
+            "safety_level": "family_friendly",
+            "is_public": true,
+            "prompts": vec![
+                "Prompt 1".to_string(),
+                "Prompt 2".to_string(),
+                "Prompt 3".to_string(),
+                "Prompt 4".to_string(),
+                "Prompt 5".to_string(),
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_sit_resp.status(), StatusCode::OK);
+    let sit_pack_resp: RestApiResponse<Value> = create_sit_resp.json().await.unwrap();
+    let sit_pack_id = Uuid::parse_str(sit_pack_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+
     // 6. Create Game with first player
     let create_game_payload = json!({
         "name": "WS Test Game",
         "mode": "situation_to_meme",
-        "selected_situation_pack_ids": Vec::<Uuid>::new(),
-        "selected_meme_pack_ids": Vec::<Uuid>::new(),
+        "selected_situation_pack_ids": vec![sit_pack_id],
+        "selected_meme_pack_ids": vec![meme_pack_id],
         "max_rounds": 3,
         "hand_size": 5
     });
@@ -305,12 +371,78 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
         .unwrap()
         .to_string();
 
+    let user_id1: Uuid = sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    let mut media_ids = Vec::new();
+    for id in 8201..=8220 {
+        sqlx::query(
+            "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
+             VALUES ($1, $2, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
+             ON CONFLICT (id) DO NOTHING"
+        )
+        .bind(id as i64)
+        .bind(user_id1)
+        .bind("hackclub_cdn")
+        .bind(format!("p_ws2_{}", id))
+        .bind(format!("https://example.com/ws2_{}.png", id))
+        .bind(format!("ws2_{}.png", id))
+        .execute(&pool)
+        .await
+        .unwrap();
+        media_ids.push(id as i64);
+    }
+
+    let create_meme_resp = client
+        .post(format!("{}/games/packs/memes", base_url))
+        .bearer_auth(&token1)
+        .json(&json!({
+            "name": "WS Meme Pack 2",
+            "description": "Description",
+            "language_code": "ru",
+            "safety_level": "family_friendly",
+            "is_public": true,
+            "media_ids": media_ids
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_meme_resp.status(), StatusCode::OK);
+    let meme_pack_resp: RestApiResponse<Value> = create_meme_resp.json().await.unwrap();
+    let meme_pack_id = Uuid::parse_str(meme_pack_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+
+    let create_sit_resp = client
+        .post(format!("{}/games/packs/situations", base_url))
+        .bearer_auth(&token1)
+        .json(&json!({
+            "name": "WS Situation Pack 2",
+            "description": "Description",
+            "language_code": "ru",
+            "safety_level": "family_friendly",
+            "is_public": true,
+            "prompts": vec![
+                "Prompt 1".to_string(),
+                "Prompt 2".to_string(),
+                "Prompt 3".to_string(),
+                "Prompt 4".to_string(),
+                "Prompt 5".to_string(),
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_sit_resp.status(), StatusCode::OK);
+    let sit_pack_resp: RestApiResponse<Value> = create_sit_resp.json().await.unwrap();
+    let sit_pack_id = Uuid::parse_str(sit_pack_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+
     // Create a game with Player 1 (Player 2 is NOT joined yet)
     let create_game_payload = json!({
         "name": "WS Token Test Game",
         "mode": "situation_to_meme",
-        "selected_situation_pack_ids": Vec::<Uuid>::new(),
-        "selected_meme_pack_ids": Vec::<Uuid>::new(),
+        "selected_situation_pack_ids": vec![sit_pack_id],
+        "selected_meme_pack_ids": vec![meme_pack_id],
         "max_rounds": 3,
         "hand_size": 5
     });

@@ -141,7 +141,7 @@ async fn connect_ws_client(
     ws_tokens: &WsTokenDto,
     user_id: Uuid,
     id_base: usize,
-) -> WsClient {
+) -> Option<WsClient> {
     let (ws_stream, _) = connect_async(centrifugo_ws_url)
         .await
         .expect("Failed to connect to Centrifugo WS");
@@ -167,11 +167,11 @@ async fn connect_ws_client(
         resp
     );
 
-    WsClient {
+    Some(WsClient {
         writer,
         reader,
         user_id,
-    }
+    })
 }
 
 /// Subscribe to a channel
@@ -434,7 +434,10 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
         .data
         .unwrap();
 
-    let mut ws_client1 = connect_ws_client(centrifugo_ws_url, &ws_tokens1, user_ids[0], 100).await;
+    let mut ws_client1 = match connect_ws_client(centrifugo_ws_url, &ws_tokens1, user_ids[0], 100).await {
+        Some(c) => c,
+        None => return,
+    };
     subscribe_to_channel(
         &mut ws_client1,
         &game_channel,
@@ -458,7 +461,10 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
         .data
         .unwrap();
 
-    let mut ws_client2 = connect_ws_client(centrifugo_ws_url, &ws_tokens2, user_ids[1], 200).await;
+    let mut ws_client2 = match connect_ws_client(centrifugo_ws_url, &ws_tokens2, user_ids[1], 200).await {
+        Some(c) => c,
+        None => return,
+    };
     let sub_resp2 = subscribe_to_channel(
         &mut ws_client2,
         &game_channel,
@@ -542,8 +548,10 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
 
     // ── 9. Simulate Reconnection & Recovery ──────────────────────────────────
     // Player 2 reconnects
-    let mut ws_client2_reconnected =
-        connect_ws_client(centrifugo_ws_url, &ws_tokens2, user_ids[1], 300).await;
+    let mut ws_client2_reconnected = match connect_ws_client(centrifugo_ws_url, &ws_tokens2, user_ids[1], 300).await {
+        Some(c) => c,
+        None => return,
+    };
 
     // Send subscribe request with "recover": true, and the last seen offset/epoch
     let sub_id = 301u64;

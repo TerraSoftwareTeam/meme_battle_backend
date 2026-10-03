@@ -33,7 +33,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_game(&self, game_id: Uuid) -> Result<Option<Game>, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
-            SELECT id, host_id, name, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
+            SELECT id, host_id, name, mode, status, max_rounds, hand_size, max_players, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             FROM games
             WHERE id = $1
             "#,
@@ -48,7 +48,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_active_lobby_games(&self) -> Result<Vec<ActiveGame>, AppError> {
         let games = sqlx::query_as::<_, ActiveGame>(
             r#"
-            SELECT g.id, g.host_id, g.name, g.mode, g.max_rounds, g.hand_size, g.created_at,
+            SELECT g.id, g.host_id, g.name, g.mode, g.max_rounds, g.hand_size, g.max_players, g.created_at,
                    COUNT(gp.user_id)::int as players_count
             FROM games g
             LEFT JOIN game_players gp ON g.id = gp.game_id
@@ -384,6 +384,80 @@ impl GameRepository for GameRepositoryImpl {
         }
     }
 
+    async fn count_cards_in_meme_packs(&self, pack_ids: &[Uuid]) -> Result<usize, AppError> {
+        if pack_ids.is_empty() {
+            return Ok(0);
+        }
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM pack_memes
+            WHERE pack_id = ANY($1) AND is_active = true
+            "#,
+        )
+        .bind(pack_ids)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count as usize)
+    }
+
+    async fn count_cards_in_situation_packs(&self, pack_ids: &[Uuid]) -> Result<usize, AppError> {
+        if pack_ids.is_empty() {
+            return Ok(0);
+        }
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM pack_situations
+            WHERE pack_id = ANY($1) AND is_active = true
+            "#,
+        )
+        .bind(pack_ids)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count as usize)
+    }
+
+    async fn get_selected_situation_pack_ids(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError> {
+        let ids = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT pack_id
+            FROM game_selected_situation_packs
+            WHERE game_id = $1
+            "#,
+        )
+        .bind(game_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(ids)
+    }
+
+    async fn get_selected_meme_pack_ids(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError> {
+        let ids = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT pack_id
+            FROM game_selected_meme_packs
+            WHERE game_id = $1
+            "#,
+        )
+        .bind(game_id)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        Ok(ids)
+    }
+
     async fn begin(&self) -> Result<Transaction<'static, Postgres>, AppError> {
         let tx = self.pool.begin().await?;
         Ok(tx)
@@ -397,12 +471,13 @@ impl GameRepository for GameRepositoryImpl {
         mode: GameMode,
         max_rounds: i32,
         hand_size: i32,
+        max_players: i32,
     ) -> Result<Game, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
-            INSERT INTO games (host_id, name, mode, max_rounds, hand_size, status, version)
-            VALUES ($1, $2, $3, $4, $5, 'lobby', 1)
-            RETURNING id, host_id, name, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
+            INSERT INTO games (host_id, name, mode, max_rounds, hand_size, max_players, status, version)
+            VALUES ($1, $2, $3, $4, $5, $6, 'lobby', 1)
+            RETURNING id, host_id, name, mode, status, max_rounds, hand_size, max_players, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             "#,
         )
         .bind(host_id)
@@ -410,6 +485,7 @@ impl GameRepository for GameRepositoryImpl {
         .bind(mode)
         .bind(max_rounds)
         .bind(hand_size)
+        .bind(max_players)
         .fetch_one(&mut **tx)
         .await?;
 
@@ -495,7 +571,7 @@ impl GameRepository for GameRepositoryImpl {
     ) -> Result<Option<Game>, AppError> {
         let game = sqlx::query_as::<_, Game>(
             r#"
-            SELECT id, host_id, name, mode, status, max_rounds, hand_size, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
+            SELECT id, host_id, name, mode, status, max_rounds, hand_size, max_players, submit_time_limit, vote_time_limit, current_round, version, started_at, finished_at, created_at
             FROM games
             WHERE id = $1
             FOR UPDATE
@@ -1705,11 +1781,12 @@ impl GameRepository for GameRepositoryImpl {
         mode: GameMode,
         max_rounds: i32,
         hand_size: i32,
+        max_players: i32,
     ) -> Result<(), AppError> {
         sqlx::query(
             r#"
             UPDATE games
-            SET name = COALESCE($2, name), mode = $3, max_rounds = $4, hand_size = $5
+            SET name = COALESCE($2, name), mode = $3, max_rounds = $4, hand_size = $5, max_players = $6
             WHERE id = $1
             "#,
         )
@@ -1718,6 +1795,7 @@ impl GameRepository for GameRepositoryImpl {
         .bind(mode)
         .bind(max_rounds)
         .bind(hand_size)
+        .bind(max_players)
         .execute(&mut **tx)
         .await?;
 

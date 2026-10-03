@@ -70,10 +70,28 @@ impl CreateGameCommand {
             )));
         }
 
+        let total_memes = self.repo.count_cards_in_meme_packs(&meme_pack_ids).await?;
+        let total_situations = self.repo.count_cards_in_situation_packs(&situation_pack_ids).await?;
+
+        // 2. Compute max players using domain logic
+        let max_players = Game::calculate_max_players(
+            mode,
+            total_memes,
+            total_situations,
+            hand_size,
+            max_rounds,
+        );
+
+        if max_players < 2 {
+            return Err(AppError::ValidationError(
+                "Selected packs do not contain enough cards for at least 2 players".to_string(),
+            ));
+        }
+
         let mut tx = self.repo.begin().await?;
 
         // 1. Create Game
-        let game = self.repo.create_game(&mut tx, creator_id, trimmed_name, mode, max_rounds, hand_size).await?;
+        let game = self.repo.create_game(&mut tx, creator_id, trimmed_name, mode, max_rounds, hand_size, max_players).await?;
 
         // 2. Select Packs
         for pack_id in situation_pack_ids {
@@ -108,7 +126,8 @@ impl CreateGameCommand {
             json!({
                 "host_id": creator_id,
                 "name": game.name,
-                "mode": game.mode
+                "mode": game.mode,
+                "max_players": max_players
             }),
         )
         .await?;

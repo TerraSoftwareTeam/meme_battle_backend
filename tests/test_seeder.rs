@@ -425,6 +425,7 @@ async fn test_seeder_game_queries_filter_out_deactivated_cards() {
         GameMode::SituationToMeme,
         3,
         5,
+        8,
     ).await.unwrap();
 
     repo.add_selected_situation_pack(&mut tx, game.id, sit_pack_id).await.unwrap();

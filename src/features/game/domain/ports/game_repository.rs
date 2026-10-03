@@ -49,6 +49,19 @@ pub trait GameRepository: Send + Sync {
         round_id: Option<Uuid>,
     ) -> Result<Vec<PlayerSubmissionState>, AppError>;
 
+    async fn count_cards_in_meme_packs(&self, pack_ids: &[Uuid]) -> Result<usize, AppError>;
+    async fn count_cards_in_situation_packs(&self, pack_ids: &[Uuid]) -> Result<usize, AppError>;
+    async fn get_selected_situation_pack_ids(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError>;
+    async fn get_selected_meme_pack_ids(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+    ) -> Result<Vec<Uuid>, AppError>;
+
     async fn begin(&self) -> Result<Transaction<'static, Postgres>, AppError>;
 
     async fn create_game(
@@ -59,6 +72,7 @@ pub trait GameRepository: Send + Sync {
         mode: GameMode,
         max_rounds: i32,
         hand_size: i32,
+        max_players: i32,
     ) -> Result<Game, AppError>;
 
     async fn add_selected_situation_pack(
@@ -404,6 +418,7 @@ pub trait GameRepository: Send + Sync {
         mode: GameMode,
         max_rounds: i32,
         hand_size: i32,
+        max_players: i32,
     ) -> Result<(), AppError>;
 
     async fn clear_selected_situation_packs(

@@ -33,6 +33,7 @@ pub struct Game {
     /// Maximum number of rounds before the game ends.
     pub max_rounds: i32,
     pub hand_size: i32,
+    pub max_players: i32,
     pub submit_time_limit: i32,
     pub vote_time_limit: i32,
     /// Index of the current round (0 = none started yet).
@@ -41,6 +42,32 @@ pub struct Game {
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+}
+
+impl Game {
+    pub fn calculate_max_players(
+        mode: GameMode,
+        total_memes: usize,
+        total_situations: usize,
+        hand_size: i32,
+        max_rounds: i32,
+    ) -> i32 {
+        let (playable_pool, prompt_pool) = match mode {
+            GameMode::SituationToMeme => (total_memes, total_situations),
+            GameMode::MemeToSituation => (total_situations, total_memes),
+        };
+
+        if prompt_pool < max_rounds.max(1) as usize {
+            return 0;
+        }
+
+        let cards_per_player = hand_size + max_rounds.max(1);
+        if cards_per_player <= 0 {
+            return 0;
+        }
+
+        (playable_pool as i32) / cards_per_player
+    }
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -154,7 +181,53 @@ pub struct ActiveGame {
     pub mode: GameMode,
     pub max_rounds: i32,
     pub hand_size: i32,
+    pub max_players: i32,
     pub players_count: i32,
     pub created_at: DateTime<Utc>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calculate_max_players_situation_to_meme() {
+        // 50 memes, 10 situations, hand_size 5, max_rounds 5
+        // cards_per_player = 5 + 5 = 10 -> max_players = 50 / 10 = 5
+        let max_players = Game::calculate_max_players(
+            GameMode::SituationToMeme,
+            50,
+            10,
+            5,
+            5,
+        );
+        assert_eq!(max_players, 5);
+    }
+
+    #[test]
+    fn test_calculate_max_players_meme_to_situation() {
+        // 50 situations, 10 memes, hand_size 4, max_rounds 6
+        // cards_per_player = 4 + 6 = 10 -> max_players = 50 / 10 = 5
+        let max_players = Game::calculate_max_players(
+            GameMode::MemeToSituation,
+            10,
+            50,
+            4,
+            6,
+        );
+        assert_eq!(max_players, 5);
+    }
+
+    #[test]
+    fn test_calculate_max_players_insufficient_prompts() {
+        // Only 2 situations available for 5 rounds
+        let max_players = Game::calculate_max_players(
+            GameMode::SituationToMeme,
+            100,
+            2,
+            5,
+            5,
+        );
+        assert_eq!(max_players, 0);
+    }
+}

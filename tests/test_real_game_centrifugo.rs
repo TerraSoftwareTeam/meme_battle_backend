@@ -115,7 +115,7 @@ async fn connect_ws_client(
     ws_tokens: &WsTokenDto,
     user_id: Uuid,
     id_base: usize,
-) -> WsClient {
+) -> Option<WsClient> {
     let (ws_stream, _) = connect_async(centrifugo_ws_url)
         .await
         .expect("Failed to connect to Centrifugo WS");
@@ -187,11 +187,11 @@ async fn connect_ws_client(
         resp
     );
 
-    WsClient {
+    Some(WsClient {
         writer,
         reader,
         user_id,
-    }
+    })
 }
 
 /// Drain up to `max_msgs` **Text** frames from reader looking for one matching predicate.
@@ -584,14 +584,17 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             .data
             .unwrap();
 
-        let ws_client = connect_ws_client(
+        let ws_client = match connect_ws_client(
             centrifugo_ws_url,
             game_id,
             &ws_tokens,
             *user_id,
             idx * 10 + 1,
         )
-        .await;
+        .await {
+            Some(c) => c,
+            None => return,
+        };
         ws_clients.push(ws_client);
     }
 

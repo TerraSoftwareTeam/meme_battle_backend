@@ -175,7 +175,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let join_game = Arc::new(crate::features::game::JoinGameCommand::new(game_repository.clone(), notification_sender.clone()));
     let set_ready = Arc::new(crate::features::game::SetReadyCommand::new(game_repository.clone(), notification_sender.clone()));
     let start_game = Arc::new(crate::features::game::StartGameCommand::new(game_repository.clone(), notification_sender.clone()));
-    let update_game = Arc::new(crate::features::game::UpdateGameCommand::new(game_repository.clone()));
+    let update_game = Arc::new(crate::features::game::UpdateGameCommand::new(game_repository.clone(), notification_sender.clone()));
     let submit_card = Arc::new(crate::features::game::SubmitCardCommand::new(game_repository.clone(), notification_sender.clone()));
     let vote_card = Arc::new(crate::features::game::VoteCardCommand::new(game_repository.clone(), notification_sender.clone()));
     let leave_game = Arc::new(crate::features::game::LeaveGameCommand::new(game_repository.clone(), notification_sender.clone()));

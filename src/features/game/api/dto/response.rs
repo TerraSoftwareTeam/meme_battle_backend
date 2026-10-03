@@ -14,6 +14,7 @@ pub struct GameDto {
     pub name: String,
     pub mode: GameMode,
     pub status: GameStatus,
+    pub max_players: i32,
     pub version: i64,
 }
 
@@ -25,6 +26,7 @@ impl From<Game> for GameDto {
             name: game.name,
             mode: game.mode,
             status: game.status,
+            max_players: game.max_players,
             version: game.version,
         }
     }
@@ -40,6 +42,7 @@ pub struct ActiveGameDto {
     pub mode: GameMode,
     pub max_rounds: i32,
     pub hand_size: i32,
+    pub max_players: i32,
     pub players_count: i32,
     pub created_at: String,
 }
@@ -53,6 +56,7 @@ impl From<ActiveGame> for ActiveGameDto {
             mode: game.mode,
             max_rounds: game.max_rounds,
             hand_size: game.hand_size,
+            max_players: game.max_players,
             players_count: game.players_count,
             created_at: game.created_at.to_rfc3339(),
         }

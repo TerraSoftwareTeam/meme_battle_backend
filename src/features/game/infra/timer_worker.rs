@@ -156,8 +156,12 @@ mod tests {
         async fn get_available_situations(&self, _game_id: Uuid) -> Result<Vec<Uuid>, AppError> { todo!() }
         async fn get_submission_by_id(&self, _submission_id: Uuid) -> Result<Option<RoundSubmission>, AppError> { todo!() }
         async fn get_players_with_submissions(&self, _game_id: Uuid, _round_id: Option<Uuid>) -> Result<Vec<PlayerSubmissionState>, AppError> { todo!() }
+        async fn count_cards_in_meme_packs(&self, _pack_ids: &[Uuid]) -> Result<usize, AppError> { todo!() }
+        async fn count_cards_in_situation_packs(&self, _pack_ids: &[Uuid]) -> Result<usize, AppError> { todo!() }
+        async fn get_selected_situation_pack_ids(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<Vec<Uuid>, AppError> { todo!() }
+        async fn get_selected_meme_pack_ids(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<Vec<Uuid>, AppError> { todo!() }
         async fn begin(&self) -> Result<Transaction<'static, Postgres>, AppError> { todo!() }
-        async fn create_game(&self, _tx: &mut Transaction<'_, Postgres>, _host_id: Uuid, _name: String, _mode: GameMode, _max_rounds: i32, _hand_size: i32) -> Result<Game, AppError> { todo!() }
+        async fn create_game(&self, _tx: &mut Transaction<'_, Postgres>, _host_id: Uuid, _name: String, _mode: GameMode, _max_rounds: i32, _hand_size: i32, _max_players: i32) -> Result<Game, AppError> { todo!() }
         async fn add_selected_situation_pack(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _pack_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn add_selected_meme_pack(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _pack_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn update_game_host(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _new_host_id: Uuid) -> Result<(), AppError> { todo!() }
@@ -214,7 +218,7 @@ mod tests {
         async fn insert_player_reserve(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _draw_order: i32, _meme_id: Option<Uuid>, _situation_id: Option<Uuid>) -> Result<(), AppError> { todo!() }
         async fn insert_content_lock(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _meme_id: Option<Uuid>, _situation_id: Option<Uuid>) -> Result<(), AppError> { todo!() }
         async fn draw_reserve_card(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _user_id: Uuid, _draw_order: i32) -> Result<(), AppError> { todo!() }
-        async fn update_game_settings(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _name: Option<String>, _mode: GameMode, _max_rounds: i32, _hand_size: i32) -> Result<(), AppError> { todo!() }
+        async fn update_game_settings(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid, _name: Option<String>, _mode: GameMode, _max_rounds: i32, _hand_size: i32, _max_players: i32) -> Result<(), AppError> { todo!() }
         async fn clear_selected_situation_packs(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn clear_selected_meme_packs(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { todo!() }
         async fn delete_game_content_locks(&self, _tx: &mut Transaction<'_, Postgres>, _game_id: Uuid) -> Result<(), AppError> { todo!() }

@@ -4,19 +4,29 @@ use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
-    features::game::domain::{
-        model::{Game, GameMode, GameStatus},
-        ports::GameRepository,
+    features::game::{
+        application::ports::game_notification_sender::GameNotificationSender,
+        domain::{
+            model::{Game, GameMode, GameStatus},
+            ports::GameRepository,
+        },
     },
 };
 
 pub struct UpdateGameCommand {
     repo: Arc<dyn GameRepository>,
+    notification_sender: Arc<dyn GameNotificationSender>,
 }
 
 impl UpdateGameCommand {
-    pub fn new(repo: Arc<dyn GameRepository>) -> Self {
-        Self { repo }
+    pub fn new(
+        repo: Arc<dyn GameRepository>,
+        notification_sender: Arc<dyn GameNotificationSender>,
+    ) -> Self {
+        Self {
+            repo,
+            notification_sender,
+        }
     }
 
     pub async fn execute(
@@ -83,9 +93,52 @@ impl UpdateGameCommand {
         let new_max_rounds = max_rounds.unwrap_or(game.max_rounds);
         let new_hand_size = hand_size.unwrap_or(game.hand_size);
 
+        let effective_situation_pack_ids = match &selected_situation_pack_ids {
+            Some(ids) => ids.clone(),
+            None => self.repo.get_selected_situation_pack_ids(&mut tx, game_id).await?,
+        };
+        let effective_meme_pack_ids = match &selected_meme_pack_ids {
+            Some(ids) => ids.clone(),
+            None => self.repo.get_selected_meme_pack_ids(&mut tx, game_id).await?,
+        };
+
+        let total_memes = self.repo.count_cards_in_meme_packs(&effective_meme_pack_ids).await?;
+        let total_situations = self.repo.count_cards_in_situation_packs(&effective_situation_pack_ids).await?;
+
+        let new_max_players = Game::calculate_max_players(
+            new_mode,
+            total_memes,
+            total_situations,
+            new_hand_size,
+            new_max_rounds,
+        );
+
+        if new_max_players < 2 {
+            return Err(AppError::ValidationError(
+                "Selected packs do not contain enough cards for at least 2 players".to_string(),
+            ));
+        }
+
+        let current_players = self.repo.get_players_tx(&mut tx, game_id).await?;
+        if current_players.len() > new_max_players as usize {
+            return Err(AppError::Conflict(format!(
+                "Cannot change settings: current lobby has {} players, but new settings only support up to {} players",
+                current_players.len(),
+                new_max_players
+            )));
+        }
+
         // Update games table
         self.repo
-            .update_game_settings(&mut tx, game_id, trimmed_name.clone(), new_mode, new_max_rounds, new_hand_size)
+            .update_game_settings(
+                &mut tx,
+                game_id,
+                trimmed_name.clone(),
+                new_mode,
+                new_max_rounds,
+                new_hand_size,
+                new_max_players,
+            )
             .await?;
 
         // Update selected situation packs if specified
@@ -122,10 +175,15 @@ impl UpdateGameCommand {
                 "name": trimmed_name,
                 "mode": new_mode,
                 "max_rounds": new_max_rounds,
-                "hand_size": new_hand_size
+                "hand_size": new_hand_size,
+                "max_players": new_max_players
             }),
         )
         .await?;
+
+        self.notification_sender
+            .notify_lobby_updated(&mut tx, game_id, current_players.len() as i32)
+            .await?;
 
         tx.commit().await?;
 
