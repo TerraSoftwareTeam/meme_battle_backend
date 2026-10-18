@@ -65,8 +65,8 @@ impl JoinGameCommand {
             &players,
         )?;
 
-        // Add player
-        self.repo.add_player(&mut tx, game_id, user_id, false, resolved_handle.clone()).await?;
+        // Add player (ready by default upon joining)
+        self.repo.add_player(&mut tx, game_id, user_id, true, resolved_handle.clone()).await?;
 
         // Increment version
         let new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
@@ -91,6 +91,24 @@ impl JoinGameCommand {
 
         self.notification_sender
             .notify_player_joined(&mut tx, game_id, user_id, resolved_handle.clone(), players_count, new_version)
+            .await?;
+
+        self.repo
+            .insert_game_event(
+                &mut tx,
+                Uuid::new_v4(),
+                game_id,
+                new_version,
+                "PlayerReadyChanged",
+                serde_json::json!({
+                    "user_id": user_id,
+                    "is_ready": true
+                }),
+            )
+            .await?;
+
+        self.notification_sender
+            .notify_player_ready_changed(&mut tx, game_id, user_id, true, new_version)
             .await?;
 
         self.notification_sender

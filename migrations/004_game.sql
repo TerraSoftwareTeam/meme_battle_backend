@@ -88,7 +88,7 @@ CREATE TABLE game_players (
     game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     score INT NOT NULL DEFAULT 0,
-    is_ready BOOLEAN NOT NULL DEFAULT false,
+    is_ready BOOLEAN NOT NULL DEFAULT true,
     handle VARCHAR(64) NOT NULL,
     joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (game_id, user_id)
