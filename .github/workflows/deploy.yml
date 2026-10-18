@@ -217,7 +217,7 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Pull new image
-        run: docker compose -f /home/deployer/meme_battle_backend/docker-compose.yml pull
+        run: docker compose -f /home/deployer/meme_battle_backend/docker-compose.yml pull app
 
       - name: Restart app
         run: docker compose -f /home/deployer/meme_battle_backend/docker-compose.yml up -d
