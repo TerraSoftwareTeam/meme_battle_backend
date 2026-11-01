@@ -41,6 +41,8 @@ pub trait MediaRepository: Send + Sync {
 
     async fn validate_exists(&self, ids: &[i64]) -> Result<(), AppError>;
 
+    async fn validate_ownership(&self, ids: &[i64], owner_user_id: &str) -> Result<(), AppError>;
+
     async fn enqueue_purge_tasks_for_media_ids(&self, media_ids: &[i64]) -> Result<(), AppError>;
 
     async fn fetch_stale_pending_media(

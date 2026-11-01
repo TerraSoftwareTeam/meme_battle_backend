@@ -13,9 +13,11 @@ use meme_battle_backend::{
             config::Config,
         },
         http::dto::RestApiResponse,
+        security::jwt::{Claims, KEYS},
     },
     features::game::api::dto::{ReadyRequest, WsTokenDto},
 };
+use jsonwebtoken::{decode, DecodingKey, Validation};
 
 #[tokio::test]
 async fn test_centrifugo_websocket_connection_and_broadcast() {
@@ -80,18 +82,21 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
         tokens.push(token);
     }
 
-    let user_id1: Uuid =
-        sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let claims1 = decode::<Claims>(
+        &tokens[0],
+        &DecodingKey::from_secret(&KEYS.jwt_secret),
+        &Validation::default(),
+    )
+    .unwrap()
+    .claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
 
     let mut media_ids = Vec::new();
     for id in 8101..=8120 {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
         .bind(user_id1)
@@ -388,18 +393,21 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
         .unwrap()
         .to_string();
 
-    let user_id1: Uuid =
-        sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let claims1 = decode::<Claims>(
+        &token1,
+        &DecodingKey::from_secret(&KEYS.jwt_secret),
+        &Validation::default(),
+    )
+    .unwrap()
+    .claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
 
     let mut media_ids = Vec::new();
     for id in 8201..=8220 {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
         .bind(user_id1)
@@ -623,11 +631,14 @@ async fn test_lobbies_realtime_websocket_updates() {
         .unwrap()
         .to_string();
 
-    let user_id1: Uuid =
-        sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let claims1 = decode::<Claims>(
+        &token1,
+        &DecodingKey::from_secret(&KEYS.jwt_secret),
+        &Validation::default(),
+    )
+    .unwrap()
+    .claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
 
     let resp2 = client
         .post(format!("{}/auth/guest", base_url))
@@ -680,7 +691,7 @@ async fn test_lobbies_realtime_websocket_updates() {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
         .bind(user_id1)

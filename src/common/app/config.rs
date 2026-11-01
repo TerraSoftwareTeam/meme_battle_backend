@@ -33,6 +33,8 @@ pub struct Config {
     pub cors_allowed_origin: String,
 
     pub max_file_size_mb: u32,
+    pub telegram_bot_token: Option<String>,
+    pub telegram_bot_api_base_url: String,
 }
 
 #[derive(Debug, Error)]
@@ -83,6 +85,10 @@ impl Config {
             }),
 
             max_file_size_mb: optional_u32_env("MAX_FILE_SIZE_MB", 35),
+            telegram_bot_token: optional_non_empty_env("TELEGRAM_BOT_TOKEN")
+                .or_else(|| optional_non_empty_env("TELEGRAM_API_KEY")),
+            telegram_bot_api_base_url: env::var("TELEGRAM_BOT_API_BASE_URL")
+                .unwrap_or_else(|_| "https://api.telegram.org".to_string()),
         };
 
         validate_sensitive_env("JWT_SECRET_KEY")?;

@@ -1,7 +1,7 @@
 use crate::{
     common::{
         app::state::UserState,
-        http::{current_user::CurrentUser, dto::RestApiResponse, error::AppError},
+        http::{current_user::CurrentUser, dto::RestApiResponse, error::AppError, role::Role},
     },
     features::user::api::{
         dto::{request::UpdateMeDto, response::UserDto},
@@ -71,9 +71,15 @@ pub async fn get_user_by_id(
 )]
 pub async fn promote_to_admin(
     State(state): State<UserState>,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
+    if current_user.role != Role::Admin {
+        return Err(AppError::Forbidden(
+            "Only administrators can promote users".to_string(),
+        ));
+    }
+
     state.promote_to_admin.execute(&id).await?;
     Ok(RestApiResponse::success_with_message(
         "User promoted to admin".to_string(),

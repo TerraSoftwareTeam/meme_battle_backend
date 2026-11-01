@@ -328,6 +328,13 @@ mod tests {
         async fn validate_exists(&self, _ids: &[i64]) -> Result<(), AppError> {
             todo!()
         }
+        async fn validate_ownership(
+            &self,
+            _ids: &[i64],
+            _owner_user_id: &str,
+        ) -> Result<(), AppError> {
+            todo!()
+        }
         async fn enqueue_purge_tasks_for_media_ids(
             &self,
             _media_ids: &[i64],

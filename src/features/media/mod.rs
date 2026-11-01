@@ -1,11 +1,15 @@
-mod api;
+pub mod api;
 mod application;
 mod domain;
 mod infra;
 
 pub use api::routes::{media_routes, MediaApiDoc};
 pub use application::commands::{
-    mark_media_attached::MarkMediaAttachedCommand, upload_media::UploadMediaCommand,
+    import_telegram_stickers::{
+        ImportTelegramStickersCommand, ImportTelegramStickersResult, ImportedStickerItem,
+    },
+    mark_media_attached::MarkMediaAttachedCommand,
+    upload_media::UploadMediaCommand,
 };
 pub use application::queries::get_media_asset_url::GetMediaAssetUrlQuery;
 pub use domain::{
@@ -16,9 +20,12 @@ pub use domain::{
     ports::{
         file_storage::FileStorage,
         media_repository::{CreateMediaAsset, MediaRepository},
+        telegram_client::TelegramStickerClient,
     },
+    telegram::{DownloadedSticker, TelegramSticker, TelegramStickerSet},
 };
 pub use infra::adapters::{
     hackclub_cdn_storage::HackClubCdnStorage, postgres_media_repository::PostgresMediaRepository,
+    telegram_bot_client::TelegramBotClient,
 };
 pub use infra::purge_worker::{MediaCleanupWorker, MediaPurgeWorker};

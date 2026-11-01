@@ -300,6 +300,29 @@ impl MediaRepository for PostgresMediaRepository {
         Ok(())
     }
 
+    async fn validate_ownership(&self, ids: &[i64], owner_user_id: &str) -> Result<(), AppError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*) FROM media_assets
+            WHERE id = ANY($1) AND owner_user_id = $2::uuid
+            "#,
+        )
+        .bind(ids)
+        .bind(owner_user_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        if count != ids.len() as i64 {
+            return Err(AppError::NotFound("Media assets not found".to_string()));
+        }
+
+        Ok(())
+    }
+
     async fn delete_by_id(&self, id: i64) -> Result<bool, AppError> {
         let result = sqlx::query(
             r#"

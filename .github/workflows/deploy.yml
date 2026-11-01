@@ -155,6 +155,8 @@ jobs:
           DEFAULT_ADMIN_USER_ID: ${{ vars.DEFAULT_ADMIN_USER_ID || '00000000-0000-0000-0000-000000000001' }}
           CORS_ALLOWED_ORIGIN: ${{ vars.CORS_ALLOWED_ORIGIN || 'https://meme.skyfly.hackclub.app' }}
           CENTRIFUGO_ALLOWED_ORIGINS: ${{ vars.CENTRIFUGO_ALLOWED_ORIGINS || vars.CORS_ALLOWED_ORIGIN || 'https://meme.skyfly.hackclub.app' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.TELEGRAM_API_KEY || '' }}
+          TELEGRAM_BOT_API_BASE_URL: ${{ vars.TELEGRAM_BOT_API_BASE_URL || 'https://api.telegram.org' }}
         run: |
           # Verification of Required Secrets
           : "${POSTGRES_USER:?POSTGRES_USER secret is required}"
@@ -182,6 +184,9 @@ jobs:
           SECRET_SEED_KEY=${SECRET_SEED_KEY}
           DEFAULT_ADMIN_USER_ID=${DEFAULT_ADMIN_USER_ID}
           HACKCLUB_CDN_API_KEY=${HACKCLUB_CDN_API_KEY}
+
+          TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+          TELEGRAM_BOT_API_BASE_URL=${TELEGRAM_BOT_API_BASE_URL}
 
           APP_EXTERNAL_PORT=${APP_EXTERNAL_PORT}
           POSTGRES_EXTERNAL_PORT=${POSTGRES_EXTERNAL_PORT}

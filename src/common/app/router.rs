@@ -37,6 +37,10 @@ use regex::Regex;
 pub static FORBIDDEN_PATTERNS: Lazy<Vec<Regex>> =
     Lazy::new(|| vec![Regex::new(r"(?i)<\s*script\b[^>]*>").unwrap()]);
 
+/// Regex pattern to redact password fields from logs.
+pub static PASSWORD_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?i)"password"\s*:\s*"[^"]*""#).unwrap());
+
 pub fn create_router(state: AppState) -> Router {
     // Build a CORS layer that supports multiple origins separated by commas
     let origins_str = &state.config.cors_allowed_origin;
@@ -233,7 +237,12 @@ where
 
     if let Ok(body_str) = std::str::from_utf8(&bytes) {
         if log_enabled {
-            tracing::info!("{} body = {:?}", direction, body_str);
+            if body_str.contains("password") {
+                let redacted = PASSWORD_PATTERN.replace_all(body_str, r#""password":"[REDACTED]""#);
+                tracing::info!("{} body = {:?}", direction, redacted);
+            } else {
+                tracing::info!("{} body = {:?}", direction, body_str);
+            }
         }
 
         if FORBIDDEN_PATTERNS.iter().any(|re| re.is_match(body_str)) {
@@ -260,7 +269,12 @@ where
     };
 
     if let Ok(body_str) = std::str::from_utf8(&bytes) {
-        tracing::debug!("{} body = {:?}", direction, body_str);
+        if body_str.contains("password") {
+            let redacted = PASSWORD_PATTERN.replace_all(body_str, r#""password":"[REDACTED]""#);
+            tracing::debug!("{} body = {:?}", direction, redacted);
+        } else {
+            tracing::debug!("{} body = {:?}", direction, body_str);
+        }
     }
 
     Ok(bytes)

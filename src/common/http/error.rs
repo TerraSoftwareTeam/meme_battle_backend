@@ -73,10 +73,18 @@ impl IntoResponse for AppError {
             AppError::UserAlreadyExists => StatusCode::CONFLICT,
         };
 
-        let message = self.to_string();
+        let message = match &self {
+            AppError::DatabaseError(err) => {
+                error!(error = %err, status = status.as_u16(), "Database error occurred");
+                "Internal server error".to_string()
+            }
+            _ => self.to_string(),
+        };
 
         if status.is_server_error() {
-            error!(error = %message, status = status.as_u16(), "Application error");
+            if !matches!(&self, AppError::DatabaseError(_)) {
+                error!(error = %message, status = status.as_u16(), "Application error");
+            }
         } else {
             tracing::warn!(error = %message, status = status.as_u16(), "Client error");
         }

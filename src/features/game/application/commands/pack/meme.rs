@@ -47,8 +47,10 @@ impl CreateMemePackCommand {
         is_public: bool,
         media_ids: Vec<i64>,
     ) -> Result<Uuid, AppError> {
-        // Validate that all provided media assets exist before writing anything
-        self.media_manager.validate_media_exists(&media_ids).await?;
+        // Validate that all provided media assets exist and belong to the author
+        self.media_manager
+            .validate_media_ownership(&media_ids, author_id)
+            .await?;
 
         let mut tx = self.repo.begin().await?;
 
@@ -251,8 +253,10 @@ impl AddMemesToPackCommand {
             ));
         }
 
-        // Validate that all provided media assets exist before writing anything
-        self.media_manager.validate_media_exists(&media_ids).await?;
+        // Validate that all provided media assets exist and belong to the author
+        self.media_manager
+            .validate_media_ownership(&media_ids, author_id)
+            .await?;
 
         let mut tx = self.repo.begin().await?;
         for media_id in &media_ids {

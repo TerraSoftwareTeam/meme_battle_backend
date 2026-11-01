@@ -170,7 +170,7 @@ async fn test_meme_and_situation_pack_soft_delete_filtering() {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, 'hackclub_cdn', $3, $4, 'meme.png', 'image/png', 1024, 'attached', 'public')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(mid)
         .bind(user_id)
@@ -396,16 +396,25 @@ async fn test_unstarted_lobby_pack_auto_deselection_on_pack_delete() {
         .as_str()
         .unwrap()
         .to_string();
+    let claims = decode::<Claims>(
+        &token,
+        &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret),
+        &Validation::default(),
+    )
+    .unwrap()
+    .claims;
+    let user_id = Uuid::parse_str(&claims.sub).unwrap();
 
     // 2. Insert mock media assets
     let mut media_ids = Vec::new();
     for mid in 8201i64..=8204i64 {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
-             VALUES ($1, '00000000-0000-0000-0000-000000000000', 'hackclub_cdn', $2, 'https://cdn.example.com/m.png', 'm.png', 'image/png', 1024, 'attached', 'public')
-             ON CONFLICT (id) DO NOTHING"
+             VALUES ($1, $2, 'hackclub_cdn', $3, 'https://cdn.example.com/m.png', 'm.png', 'image/png', 1024, 'attached', 'public')
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(mid)
+        .bind(user_id)
         .bind(format!("f_{}", mid))
         .execute(&pool)
         .await
@@ -606,7 +615,7 @@ async fn test_cleanup_worker_active_lock_postponement_and_history_preservation()
     sqlx::query(
         "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
          VALUES ($1, $2, 'hackclub_cdn', 'f8301', 'https://cdn.example.com/8301.png', 'history_test.png', 'image/png', 1024, 'attached', 'public')
-         ON CONFLICT (id) DO NOTHING"
+         ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
     )
     .bind(media_id)
     .bind(user_id)

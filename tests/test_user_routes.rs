@@ -203,10 +203,47 @@ async fn test_user_routes_lifecycle() {
         .unwrap()
         .to_string();
 
-    // Promote user 2 using user 1's token (promote-admin is currently unrestricted by role)
-    let promote_resp = client
+    // Verify regular user cannot promote to admin (403 Forbidden)
+    let forbidden_promote_resp = client
         .post(format!("{}/user/{}/promote-admin", base_url, user_id2))
         .bearer_auth(&access_token1)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(forbidden_promote_resp.status(), StatusCode::FORBIDDEN);
+
+    // Make user 1 an admin in DB and login to receive admin JWT token
+    sqlx::query("UPDATE users SET role = 'admin' WHERE id = $1::uuid")
+        .bind(&user_id1)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let admin_login_resp = client
+        .post(format!("{}/auth/login", base_url))
+        .json(&json!({
+            "username": updated_username,
+            "password": new_password
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(admin_login_resp.status(), StatusCode::OK);
+    let admin_login_body: RestApiResponse<Value> = admin_login_resp.json().await.unwrap();
+    let admin_token1 = admin_login_body
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Now promote user 2 using user 1's admin token (should succeed with 200 OK)
+    let promote_resp = client
+        .post(format!("{}/user/{}/promote-admin", base_url, user_id2))
+        .bearer_auth(&admin_token1)
         .send()
         .await
         .unwrap();

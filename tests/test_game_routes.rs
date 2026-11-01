@@ -159,7 +159,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
         .bind(user_id1)
@@ -719,7 +719,7 @@ async fn test_game_vulnerability_fixes_and_full_flow() {
     sqlx::query(
         "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
          VALUES (2099, $1, 'hackclub_cdn', 'prov_99', 'https://example.com/99.png', 'new_meme.png', 'image/png', 1024, 'pending', 'private')
-         ON CONFLICT (id) DO NOTHING"
+         ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
     )
     .bind(user_id1)
     .execute(&pool)
@@ -1047,7 +1047,7 @@ async fn test_duplicate_pack_item_returns_conflict() {
     sqlx::query(
         "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
          VALUES ($1, $2, 'hackclub_cdn', 'prov_dup_test', 'https://example.com/dup.png', 'dup.png', 'image/png', 1024, 'pending', 'private')
-         ON CONFLICT (id) DO NOTHING",
+         ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
     )
     .bind(media_id)
     .bind(user_id)
@@ -1227,7 +1227,7 @@ async fn test_game_start_deterministic_and_precomputes() {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
         .bind(user_id1)
@@ -1382,7 +1382,7 @@ async fn test_game_start_deterministic_and_precomputes() {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
         .bind(user_id1)
@@ -1537,7 +1537,7 @@ async fn test_game_settings_update() {
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
     let mut media_ids = Vec::new();
     for id in 4001..=4020 {
-        sqlx::query("INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility) VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private') ON CONFLICT DO NOTHING")
+        sqlx::query("INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility) VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private') ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'")
             .bind(id as i64)
             .bind(user_id1)
             .bind(format!("p_{}", id))
@@ -1716,7 +1716,7 @@ async fn test_game_play_to_completion_deletes_locks() {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
          )
          .bind(id as i64)
          .bind(user_id1)
@@ -2100,11 +2100,11 @@ async fn test_game_catalog_endpoint() {
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
 
     // Setup 24 dummy media assets
-    for id in 3001..=3024 {
+    for id in 6001..=6024 {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
         .bind(user_id1)
@@ -2123,7 +2123,7 @@ async fn test_game_catalog_endpoint() {
         language_code: LanguageCode::Ru,
         safety_level: ContentSafetyLevel::FamilyFriendly,
         is_public: false,
-        media_ids: (3001..=3024).collect(),
+        media_ids: (6001..=6024).collect(),
     };
     let (status_create_meme, bytes_create_meme) = send_request(
         &app,
@@ -2403,17 +2403,25 @@ async fn test_game_handle_conflicts() {
     .unwrap()
     .claims;
     let user_id3 = claims3.sub.clone();
+    let claims1 = decode::<Claims>(
+        &token1,
+        &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret),
+        &Validation::default(),
+    )
+    .unwrap()
+    .claims;
+    let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
 
     // 2. Setup packs
     let mut media_ids = Vec::new();
-    for id in 4001..=4020 {
+    for id in 8001..=8020 {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2::uuid, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
-        .bind(Uuid::parse_str(&claims3.sub).unwrap())
+        .bind(user_id1)
         .bind("hackclub_cdn")
         .bind(format!("prov_conflict_id_{}", id))
         .bind(format!("https://example.com/conflict_{}.png", id))
@@ -2593,7 +2601,7 @@ async fn test_game_active_and_leave_routes() {
         sqlx::query(
             "INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility)
              VALUES ($1, $2::uuid, $3, $4, $5, $6, 'image/png', 1024, 'pending', 'private')
-             ON CONFLICT (id) DO NOTHING"
+             ON CONFLICT (id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id, status = 'pending'"
         )
         .bind(id as i64)
         .bind(user_id1)

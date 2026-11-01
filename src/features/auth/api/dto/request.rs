@@ -6,15 +6,17 @@ use crate::features::auth::{LoginUser, RefreshSession, RegisterUser};
 
 #[derive(Debug, Deserialize, ToSchema, Validate)]
 pub struct RegisterAuthUserDto {
-    #[validate(length(max = 64, message = "Username cannot exceed 64 characters"))]
+    #[validate(length(min = 1, max = 64, message = "Username must be between 1 and 64 characters"))]
     pub username: String,
+    #[validate(length(min = 1, message = "Password cannot be empty"))]
     pub password: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema, Validate)]
 pub struct AuthUserDto {
-    #[validate(length(max = 64, message = "Username cannot exceed 64 characters"))]
+    #[validate(length(min = 1, max = 64, message = "Username must be between 1 and 64 characters"))]
     pub username: String,
+    #[validate(length(min = 1, message = "Password cannot be empty"))]
     pub password: Option<String>,
 }
 

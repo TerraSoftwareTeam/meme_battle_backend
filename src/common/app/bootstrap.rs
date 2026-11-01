@@ -12,8 +12,9 @@ use crate::features::auth::{
     LoginUserCommand, RefreshSessionCommand, RegisterUserCommand, UserExistsQuery,
 };
 use crate::features::media::{
-    FileStorage, GetMediaAssetUrlQuery, HackClubCdnStorage, MarkMediaAttachedCommand,
-    MediaRepository, PostgresMediaRepository, UploadMediaCommand,
+    FileStorage, GetMediaAssetUrlQuery, HackClubCdnStorage, ImportTelegramStickersCommand,
+    MarkMediaAttachedCommand, MediaRepository, PostgresMediaRepository, TelegramBotClient,
+    TelegramStickerClient, UploadMediaCommand,
 };
 use crate::features::user::{
     GetMeQuery, GetUserByIdQuery, GetUserListQuery, GetUsersQuery, PromoteToAdminCommand,
@@ -66,6 +67,8 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         config.admin_user_ids.clone(),
     ));
 
+    let max_file_size_bytes = config.max_file_size_mb as usize * 1024 * 1024;
+
     // Media
     let media_repository: Arc<dyn MediaRepository> =
         Arc::new(PostgresMediaRepository::new(pool.clone()));
@@ -79,6 +82,16 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     ));
     let get_media_asset_url = Arc::new(GetMediaAssetUrlQuery::new(media_repository.clone()));
     let mark_media_attached = Arc::new(MarkMediaAttachedCommand::new(media_repository.clone()));
+    let telegram_client: Arc<dyn TelegramStickerClient> = Arc::new(TelegramBotClient::new(
+        config.telegram_bot_token.clone().unwrap_or_default(),
+        config.telegram_bot_api_base_url.clone(),
+    ));
+    let import_telegram_stickers = Arc::new(ImportTelegramStickersCommand::new(
+        telegram_client,
+        media_storage.clone(),
+        media_repository.clone(),
+        max_file_size_bytes,
+    ));
     let media_cleanup_worker = Arc::new(crate::features::media::MediaCleanupWorker::new(
         media_repository.clone(),
         media_storage,
@@ -114,8 +127,6 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     ));
     let promote_to_admin = Arc::new(PromoteToAdminCommand::new(user_repository));
 
-    let max_file_size_bytes = config.max_file_size_mb as usize * 1024 * 1024;
-
     // States
     let auth_state = AuthState::new(
         register_user,
@@ -127,6 +138,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     );
     let media_state = MediaState::new(
         upload_media,
+        import_telegram_stickers,
         get_media_asset_url.clone(),
         mark_media_attached.clone(),
         media_cleanup_worker,

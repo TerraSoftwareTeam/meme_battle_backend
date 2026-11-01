@@ -37,6 +37,16 @@ impl GameMediaManager for GameMediaManagerAdapter {
         self.media_repository.validate_exists(media_ids).await
     }
 
+    async fn validate_media_ownership(
+        &self,
+        media_ids: &[i64],
+        author_id: uuid::Uuid,
+    ) -> Result<(), AppError> {
+        self.media_repository
+            .validate_ownership(media_ids, &author_id.to_string())
+            .await
+    }
+
     async fn enqueue_purge_for_media_ids(&self, media_ids: &[i64]) -> Result<(), AppError> {
         self.media_repository
             .enqueue_purge_tasks_for_media_ids(media_ids)

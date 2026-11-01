@@ -8,8 +8,14 @@ use crate::{
     common::app::state::AppState,
     features::media::{
         api::{
-            dto::{request::UploadMediaRequestDto, response::MediaAssetDto},
-            handlers::{__path_upload_image_media, upload_image_media},
+            dto::{
+                request::{ImportTelegramStickersRequestDto, UploadMediaRequestDto},
+                response::{ImportTelegramStickersResponseDto, ImportedStickerDto, MediaAssetDto},
+            },
+            handlers::{
+                __path_import_telegram_stickers, __path_upload_image_media,
+                import_telegram_stickers, upload_image_media,
+            },
         },
         MediaProvider,
     },
@@ -19,10 +25,14 @@ use crate::{
 #[openapi(
     paths(
         upload_image_media,
+        import_telegram_stickers,
     ),
     components(schemas(
         UploadMediaRequestDto,
         MediaAssetDto,
+        ImportTelegramStickersRequestDto,
+        ImportTelegramStickersResponseDto,
+        ImportedStickerDto,
         MediaProvider,
     )),
     tags(
@@ -52,5 +62,7 @@ impl utoipa::Modify for MediaApiDoc {
 }
 
 pub fn media_routes() -> Router<AppState> {
-    Router::new().route("/upload/image", post(upload_image_media))
+    Router::new()
+        .route("/upload/image", post(upload_image_media))
+        .route("/import/telegram", post(import_telegram_stickers))
 }

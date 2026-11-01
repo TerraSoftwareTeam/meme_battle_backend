@@ -39,6 +39,12 @@ pub async fn extract_file(
             )));
         }
 
+        if !is_allowed_image(&content_type, &filename) {
+            return Err(AppError::ValidationError(
+                "Unsupported file format. Only PNG, JPEG, WEBP and GIF images are allowed".into(),
+            ));
+        }
+
         return Ok(UploadFile {
             filename,
             content_type,
@@ -47,4 +53,26 @@ pub async fn extract_file(
     }
 
     Err(AppError::ValidationError("Missing file field".into()))
+}
+
+fn is_allowed_image(content_type: &str, filename: &str) -> bool {
+    let lower_ct = content_type.to_ascii_lowercase();
+    let raw_ct = lower_ct.split(';').next().unwrap_or("").trim();
+    if matches!(raw_ct, "image/jpeg" | "image/png" | "image/webp" | "image/gif") {
+        return true;
+    }
+
+    if raw_ct == "application/octet-stream" || raw_ct.is_empty() {
+        let lower_fn = filename.to_ascii_lowercase();
+        if lower_fn.ends_with(".png")
+            || lower_fn.ends_with(".jpg")
+            || lower_fn.ends_with(".jpeg")
+            || lower_fn.ends_with(".webp")
+            || lower_fn.ends_with(".gif")
+        {
+            return true;
+        }
+    }
+
+    false
 }
