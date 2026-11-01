@@ -32,13 +32,66 @@ use meme_battle_backend::{
     },
 };
 
+#[derive(Clone)]
+struct MockCdnState {
+    deleted_ids: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+fn mock_cdn_router(state: MockCdnState) -> Router {
+    Router::new()
+        .route("/api/v4/upload", axum::routing::post(handle_mock_upload))
+        .route(
+            "/api/v4/upload/{id}",
+            axum::routing::delete(handle_mock_delete),
+        )
+        .with_state(state)
+}
+
+async fn handle_mock_upload() -> axum::Json<Value> {
+    let file_id = Uuid::new_v4().to_string();
+    axum::Json(serde_json::json!({
+        "id": file_id,
+        "filename": "mock_file.png",
+        "size": 1024,
+        "content_type": "image/png",
+        "url": format!("https://cdn.example.com/{}.png", file_id)
+    }))
+}
+
+async fn handle_mock_delete(
+    axum::extract::State(state): axum::extract::State<MockCdnState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> axum::Json<Value> {
+    state.deleted_ids.lock().unwrap().push(id);
+    axum::Json(serde_json::json!({
+        "deleted": true
+    }))
+}
+
 async fn setup_db_and_router() -> (
     PgPool,
     Router,
     Arc<meme_battle_backend::common::app::state::AppState>,
+    Arc<std::sync::Mutex<Vec<String>>>,
 ) {
     dotenvy::dotenv().ok();
-    let config = Config::from_env().unwrap();
+
+    let deleted_cdn_ids = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let cdn_state = MockCdnState {
+        deleted_ids: deleted_cdn_ids.clone(),
+    };
+
+    let cdn_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let cdn_addr = cdn_listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(cdn_listener, mock_cdn_router(cdn_state))
+            .await
+            .unwrap();
+    });
+
+    let mut config = Config::from_env().unwrap();
+    config.hackclub_cdn_base_url = format!("http://{}", cdn_addr);
+    config.hackclub_cdn_api_key = Some("sk_cdn_mock_test_key".to_string());
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -52,7 +105,7 @@ async fn setup_db_and_router() -> (
     let state = Arc::new(build_app_state(pool.clone(), config));
     let app = create_router((*state).clone());
 
-    (pool, app, state)
+    (pool, app, state, deleted_cdn_ids)
 }
 
 async fn send_request<T: Serialize>(
@@ -86,7 +139,7 @@ async fn send_request<T: Serialize>(
 
 #[tokio::test]
 async fn test_meme_and_situation_pack_soft_delete_filtering() {
-    let (pool, app, _) = setup_db_and_router().await;
+    let (pool, app, _, _) = setup_db_and_router().await;
 
     // 1. Create Guest User
     let (status, bytes) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
@@ -328,7 +381,7 @@ async fn test_meme_and_situation_pack_soft_delete_filtering() {
 
 #[tokio::test]
 async fn test_unstarted_lobby_pack_auto_deselection_on_pack_delete() {
-    let (pool, app, _) = setup_db_and_router().await;
+    let (pool, app, _, _) = setup_db_and_router().await;
 
     // 1. Create Guest User
     let (status, bytes) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
@@ -515,7 +568,7 @@ async fn test_unstarted_lobby_pack_auto_deselection_on_pack_delete() {
 
 #[tokio::test]
 async fn test_cleanup_worker_active_lock_postponement_and_history_preservation() {
-    let (pool, app, state) = setup_db_and_router().await;
+    let (pool, app, state, _) = setup_db_and_router().await;
 
     // 1. Create Guest User
     let (status, bytes) = send_request::<()>(&app, Method::POST, "/auth/guest", None, None).await;
@@ -804,4 +857,236 @@ async fn test_cleanup_worker_active_lock_postponement_and_history_preservation()
         .unwrap()
         .get("winner_user_id");
     assert_eq!(winner, Some(user_id), "Game round winner must be preserved");
+}
+
+#[tokio::test]
+async fn test_purge_worker_cleans_stale_pending_media_older_than_one_day() {
+    let (pool, _app, state, deleted_cdn_ids) = setup_db_and_router().await;
+
+    // 1. Create a user for owner_user_id
+    let user_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO users (id, username, role) VALUES ($1, $2, 'user') ON CONFLICT DO NOTHING",
+    )
+    .bind(user_id)
+    .bind(format!("user_{}", user_id))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stale_file_id = format!("stale_{}", Uuid::new_v4());
+    let fresh_file_id = format!("fresh_{}", Uuid::new_v4());
+    let attached_file_id = format!("attached_{}", Uuid::new_v4());
+
+    // 2. Insert 3 media assets:
+    // a) Stale pending (> 1 day ago) -> SHOULD be purged!
+    let stale_pending_id: i64 = sqlx::query_scalar(
+        r#"
+        INSERT INTO media_assets (owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility, created_at)
+        VALUES ($1, 'hackclub_cdn', $2, 'https://cdn.example.com/stale.png', 'stale.png', 'image/png', 1024, 'pending', 'private', now() - INTERVAL '2 days')
+        RETURNING id
+        "#,
+    )
+    .bind(user_id)
+    .bind(&stale_file_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // b) Fresh pending (< 1 day ago) -> should NOT be purged!
+    let fresh_pending_id: i64 = sqlx::query_scalar(
+        r#"
+        INSERT INTO media_assets (owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility, created_at)
+        VALUES ($1, 'hackclub_cdn', $2, 'https://cdn.example.com/fresh.png', 'fresh.png', 'image/png', 1024, 'pending', 'private', now() - INTERVAL '1 hour')
+        RETURNING id
+        "#,
+    )
+    .bind(user_id)
+    .bind(&fresh_file_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // c) Attached media (> 1 day ago) -> should NOT be purged!
+    let attached_id: i64 = sqlx::query_scalar(
+        r#"
+        INSERT INTO media_assets (owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility, created_at)
+        VALUES ($1, 'hackclub_cdn', $2, 'https://cdn.example.com/attached.png', 'attached.png', 'image/png', 1024, 'attached', 'public', now() - INTERVAL '2 days')
+        RETURNING id
+        "#,
+    )
+    .bind(user_id)
+    .bind(&attached_file_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // 3. Run the purge worker
+    state
+        .media
+        .purge_worker
+        .process_pending_purges()
+        .await
+        .unwrap();
+
+    // 4. Verify outcomes:
+    // a) Stale pending asset must be deleted from media_assets
+    let stale_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM media_assets WHERE id = $1)")
+            .bind(stale_pending_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        !stale_exists,
+        "Stale pending media asset (> 1 day) must be purged from database"
+    );
+
+    // b) Fresh pending asset must STILL exist
+    let fresh_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM media_assets WHERE id = $1)")
+            .bind(fresh_pending_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        fresh_exists,
+        "Fresh pending media asset (< 1 day) must NOT be purged"
+    );
+
+    // c) Attached asset must STILL exist
+    let attached_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM media_assets WHERE id = $1)")
+            .bind(attached_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(attached_exists, "Attached media asset must NOT be purged");
+
+    // d) Verify CDN delete was called for the stale pending file, and NOT for fresh or attached
+    let deleted = deleted_cdn_ids.lock().unwrap().clone();
+    assert!(
+        deleted.contains(&stale_file_id),
+        "CDN must delete stale pending file: {stale_file_id}"
+    );
+    assert!(
+        !deleted.contains(&fresh_file_id),
+        "CDN must NOT delete fresh pending file: {fresh_file_id}"
+    );
+    assert!(
+        !deleted.contains(&attached_file_id),
+        "CDN must NOT delete attached file: {attached_file_id}"
+    );
+
+    // Cleanup fresh and attached test rows
+    let _ = sqlx::query("DELETE FROM media_assets WHERE id IN ($1, $2)")
+        .bind(fresh_pending_id)
+        .bind(attached_id)
+        .execute(&pool)
+        .await;
+}
+
+#[tokio::test]
+async fn test_purge_worker_self_heals_pending_media_used_in_active_pack() {
+    let (pool, _app, state, deleted_cdn_ids) = setup_db_and_router().await;
+
+    // Clean up any potential legacy leftover row
+    let _ =
+        sqlx::query("DELETE FROM media_assets WHERE provider_file_id = 'pending_in_active_pack'")
+            .execute(&pool)
+            .await;
+
+    let user_id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO users (id, username, role) VALUES ($1, $2, 'user') ON CONFLICT DO NOTHING",
+    )
+    .bind(user_id)
+    .bind(format!("user_{}", user_id))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1. Create a pack
+    let pack_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO meme_packs (id, author_id, name, description, language_code, safety_level, is_public)
+        VALUES ($1, $2, 'Active Pack', 'Test', 'en', 'family_friendly', true)
+        "#,
+    )
+    .bind(pack_id)
+    .bind(user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 2. Insert a stale pending media asset (> 1 day ago) with unique file ID
+    let in_use_file_id = format!("in_use_{}", Uuid::new_v4());
+    let media_id: i64 = sqlx::query_scalar(
+        r#"
+        INSERT INTO media_assets (owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility, created_at)
+        VALUES ($1, 'hackclub_cdn', $2, 'https://cdn.example.com/in_pack.png', 'in_pack.png', 'image/png', 1024, 'pending', 'private', now() - INTERVAL '2 days')
+        RETURNING id
+        "#,
+    )
+    .bind(user_id)
+    .bind(&in_use_file_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    // 3. Link this media asset to the active pack in pack_memes
+    sqlx::query(
+        r#"
+        INSERT INTO pack_memes (id, pack_id, media_id)
+        VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(pack_id)
+    .bind(media_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 4. Run the purge worker
+    state
+        .media
+        .purge_worker
+        .process_pending_purges()
+        .await
+        .unwrap();
+
+    // 5. Verify:
+    // a) Media asset was NOT deleted
+    let media_status: Option<String> =
+        sqlx::query_scalar("SELECT status::text FROM media_assets WHERE id = $1")
+            .bind(media_id)
+            .fetch_optional(&pool)
+            .await
+            .unwrap();
+
+    assert!(media_status.is_some(), "Media asset must NOT be deleted");
+    // b) Media asset status was self-healed to 'attached'
+    assert_eq!(
+        media_status.as_deref(),
+        Some("attached"),
+        "Media asset in active pack must be self-healed from 'pending' to 'attached'"
+    );
+    // c) CDN was NOT called for deletion of this media asset
+    let deleted = deleted_cdn_ids.lock().unwrap().clone();
+    assert!(
+        !deleted.contains(&in_use_file_id),
+        "CDN delete must NOT be called for self-healed media: {in_use_file_id}"
+    );
+
+    // Cleanup
+    let _ = sqlx::query("DELETE FROM meme_packs WHERE id = $1")
+        .bind(pack_id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM media_assets WHERE id = $1")
+        .bind(media_id)
+        .execute(&pool)
+        .await;
 }

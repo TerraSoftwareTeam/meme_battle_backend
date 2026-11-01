@@ -334,6 +334,40 @@ impl MediaRepository for PostgresMediaRepository {
         Ok(())
     }
 
+    async fn fetch_stale_pending_media(
+        &self,
+        older_than: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<MediaAsset>, AppError> {
+        let rows = sqlx::query_as::<_, MediaAssetRow>(
+            r#"
+            SELECT
+                id,
+                owner_user_id::text AS owner_user_id,
+                provider,
+                provider_file_id,
+                url,
+                filename,
+                content_type,
+                size_bytes,
+                status::text AS status,
+                visibility::text AS visibility,
+                created_at
+            FROM media_assets
+            WHERE status = 'pending'
+              AND created_at < $1
+            ORDER BY created_at ASC
+            LIMIT $2
+            "#,
+        )
+        .bind(older_than)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter().map(TryInto::try_into).collect()
+    }
+
     async fn fetch_pending_purge_tasks(&self, limit: i64) -> Result<Vec<MediaPurgeTask>, AppError> {
         let rows = sqlx::query_as::<_, MediaPurgeTaskRow>(
             r#"

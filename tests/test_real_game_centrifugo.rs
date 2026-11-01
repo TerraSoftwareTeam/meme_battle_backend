@@ -397,11 +397,7 @@ async fn test_real_game_centrifugo_gameplay_flow() {
 
     // Start outbox processor
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let processor_handle = state
-        .realtime
-        .processor
-        .clone()
-        .start(pool.clone(), shutdown_rx);
+    let processor_handle = state.realtime.outbox_worker.clone().start(shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);

@@ -155,9 +155,10 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     ));
     let token_usecase = Arc::new(crate::features::realtime::GenerateTokenCommand::new());
 
-    let outbox_processor = Arc::new(crate::features::realtime::OutboxProcessor::new(
+    let outbox_worker = Arc::new(crate::features::realtime::RealtimeOutboxWorker::new(
         outbox_repository,
         realtime_publisher,
+        pool.clone(),
     ));
 
     // Global Adapters wiring Game feature to Realtime feature
@@ -170,7 +171,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     let token_generator: Arc<dyn crate::features::game::GameTokenGenerator> =
         Arc::new(crate::common::app::adapters::GameTokenGeneratorAdapter::new(token_usecase));
 
-    let realtime_state = RealtimeState::new(outbox_processor);
+    let realtime_state = RealtimeState::new(outbox_worker);
 
     // Game
     let game_repository: Arc<dyn crate::features::game::GameRepository> =
@@ -292,7 +293,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         game_repository.clone(),
         notification_sender,
     ));
-    let timer_worker = Arc::new(crate::features::game::GameTimerWorker::new(
+    let round_timeout_worker = Arc::new(crate::features::game::RoundTimeoutWorker::new(
         game_repository,
         process_timeout.clone(),
     ));
@@ -327,7 +328,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         get_ws_token,
         list_active_games,
         process_timeout,
-        timer_worker,
+        round_timeout_worker,
         game_media_manager,
         token_generator,
     );

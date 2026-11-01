@@ -43,6 +43,12 @@ pub trait MediaRepository: Send + Sync {
 
     async fn enqueue_purge_tasks_for_media_ids(&self, media_ids: &[i64]) -> Result<(), AppError>;
 
+    async fn fetch_stale_pending_media(
+        &self,
+        older_than: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<MediaAsset>, AppError>;
+
     async fn fetch_pending_purge_tasks(&self, limit: i64) -> Result<Vec<MediaPurgeTask>, AppError>;
 
     async fn complete_purge_task(&self, task_id: Uuid) -> Result<(), AppError>;

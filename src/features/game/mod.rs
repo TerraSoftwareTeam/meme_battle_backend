@@ -49,7 +49,7 @@ pub use application::ports::game_token_generator::GameTokenGenerator;
 
 // Re-export infrastructure adapter
 pub use infra::adapters::GameRepositoryImpl;
-pub use infra::timer_worker::GameTimerWorker;
+pub use infra::round_timeout_worker::{GameTimerWorker, RoundTimeoutWorker};
 
 use std::sync::Arc;
 
@@ -84,7 +84,9 @@ pub struct GameState {
     pub get_ws_token: Arc<GetWsTokenQuery>,
     pub list_active_games: Arc<ListActiveGamesQuery>,
     pub process_timeout: Arc<ProcessTimeoutCommand>,
-    pub timer_worker: Arc<GameTimerWorker>,
+    pub round_timeout_worker: Arc<RoundTimeoutWorker>,
+    /// Backward compatibility alias for round_timeout_worker
+    pub timer_worker: Arc<RoundTimeoutWorker>,
     pub media_manager: Arc<dyn GameMediaManager>,
     pub token_generator: Arc<dyn GameTokenGenerator>,
 }
@@ -120,7 +122,7 @@ impl GameState {
         get_ws_token: Arc<GetWsTokenQuery>,
         list_active_games: Arc<ListActiveGamesQuery>,
         process_timeout: Arc<ProcessTimeoutCommand>,
-        timer_worker: Arc<GameTimerWorker>,
+        round_timeout_worker: Arc<RoundTimeoutWorker>,
         media_manager: Arc<dyn GameMediaManager>,
         token_generator: Arc<dyn GameTokenGenerator>,
     ) -> Self {
@@ -154,7 +156,8 @@ impl GameState {
             get_ws_token,
             list_active_games,
             process_timeout,
-            timer_worker,
+            timer_worker: round_timeout_worker.clone(),
+            round_timeout_worker,
             media_manager,
             token_generator,
         }

@@ -98,18 +98,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    // Start unified realtime outbox processor worker
-    state
+    // 1. Realtime outbox background worker
+    let outbox_handle = state
         .realtime
-        .processor
+        .outbox_worker
         .clone()
-        .start(pool.clone(), shutdown_rx.clone());
+        .start(shutdown_rx.clone());
 
-    // Start game timer background worker
-    state.game.timer_worker.clone().start(shutdown_rx.clone());
+    // 2. Game round timeout background worker
+    let timeout_handle = state
+        .game
+        .round_timeout_worker
+        .clone()
+        .start(shutdown_rx.clone());
 
-    // Start media cleanup background worker
-    state.media.cleanup_worker.clone().start(shutdown_rx);
+    // 3. Media purge background worker
+    let purge_handle = state.media.purge_worker.clone().start(shutdown_rx);
 
     let app = create_router(state);
 
@@ -145,6 +149,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     }
 
     info!("HTTP server stopped");
+
+    info!("Waiting for background workers to finish in-flight tasks...");
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        let _ = tokio::join!(outbox_handle, timeout_handle, purge_handle);
+    })
+    .await;
+    info!("All background workers stopped cleanly");
 
     #[cfg(feature = "opentelemetry")]
     if let Err(err) = shutdown_opentelemetry(otel_providers) {

@@ -1,2 +1,2 @@
 pub mod adapters;
-pub mod processor;
+pub mod outbox_worker;

@@ -261,11 +261,7 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
 
     // Start outbox processor
     let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    state
-        .realtime
-        .processor
-        .clone()
-        .start(pool.clone(), shutdown_rx);
+    state.realtime.outbox_worker.clone().start(shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);

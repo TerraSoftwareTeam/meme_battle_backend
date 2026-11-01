@@ -21,4 +21,4 @@ pub use domain::{
 pub use infra::adapters::{
     hackclub_cdn_storage::HackClubCdnStorage, postgres_media_repository::PostgresMediaRepository,
 };
-pub use infra::cleanup_worker::MediaCleanupWorker;
+pub use infra::purge_worker::{MediaCleanupWorker, MediaPurgeWorker};

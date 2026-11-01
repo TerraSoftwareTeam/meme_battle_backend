@@ -1,13 +1,18 @@
-use crate::features::realtime::OutboxProcessor;
+use crate::features::realtime::RealtimeOutboxWorker;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct RealtimeState {
-    pub processor: Arc<OutboxProcessor>,
+    pub outbox_worker: Arc<RealtimeOutboxWorker>,
+    /// Backward-compatibility alias for outbox_worker
+    pub processor: Arc<RealtimeOutboxWorker>,
 }
 
 impl RealtimeState {
-    pub fn new(processor: Arc<OutboxProcessor>) -> Self {
-        Self { processor }
+    pub fn new(outbox_worker: Arc<RealtimeOutboxWorker>) -> Self {
+        Self {
+            processor: outbox_worker.clone(),
+            outbox_worker,
+        }
     }
 }

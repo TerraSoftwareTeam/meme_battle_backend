@@ -53,11 +53,7 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
 
     // 3. Start publisher outbox processor in tests
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let processor_handle = state
-        .realtime
-        .processor
-        .clone()
-        .start(pool.clone(), shutdown_rx);
+    let processor_handle = state.realtime.outbox_worker.clone().start(shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);
@@ -603,11 +599,7 @@ async fn test_lobbies_realtime_websocket_updates() {
 
     // Start publisher outbox processor in tests
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let processor_handle = state
-        .realtime
-        .processor
-        .clone()
-        .start(pool.clone(), shutdown_rx);
+    let processor_handle = state.realtime.outbox_worker.clone().start(shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);
@@ -1045,12 +1037,51 @@ async fn test_lobbies_realtime_websocket_updates() {
     let _ = processor_handle.await;
 }
 
+fn mock_cdn_router() -> axum::Router {
+    axum::Router::new()
+        .route("/api/v4/upload", axum::routing::post(handle_mock_upload))
+        .route(
+            "/api/v4/upload/{id}",
+            axum::routing::delete(handle_mock_delete),
+        )
+}
+
+async fn handle_mock_upload() -> axum::Json<Value> {
+    let file_id = Uuid::new_v4().to_string();
+    axum::Json(serde_json::json!({
+        "id": file_id,
+        "filename": "mock_large_image.png",
+        "size": 4 * 1024 * 1024,
+        "content_type": "image/png",
+        "url": format!("https://cdn.hackclub.com/{}.png", file_id)
+    }))
+}
+
+async fn handle_mock_delete(
+    axum::extract::Path(_id): axum::extract::Path<String>,
+) -> axum::Json<Value> {
+    axum::Json(serde_json::json!({
+        "deleted": true
+    }))
+}
+
 #[tokio::test]
 async fn test_large_media_upload_limit() {
     dotenvy::dotenv().ok();
     let _ = tracing_subscriber::fmt::try_init();
 
-    let config = Config::from_env().unwrap();
+    // 1. Spin up the mock CDN server so tests never upload garbage to the real CDN
+    let cdn_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let cdn_addr = cdn_listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(cdn_listener, mock_cdn_router()).await.unwrap();
+    });
+
+    // 2. Point HackClub CDN to our local mock CDN server
+    let mut config = Config::from_env().unwrap();
+    config.hackclub_cdn_base_url = format!("http://{}", cdn_addr);
+    config.hackclub_cdn_api_key = Some("sk_cdn_mock_test_key".to_string());
+
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&config.database_url)
@@ -1107,4 +1138,16 @@ async fn test_large_media_upload_limit() {
     // Verify it is not rejected by Axum body limit layer (which would return 413 Payload Too Large)
     let status = upload_resp.status();
     assert_ne!(status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(status, StatusCode::OK);
+
+    // Clean up created media asset from database so test DB is not left with garbage
+    let upload_body: RestApiResponse<Value> = upload_resp.json().await.unwrap();
+    if let Some(data) = upload_body.0.data {
+        if let Some(media_id) = data.get("id").and_then(|id| id.as_i64()) {
+            let _ = sqlx::query("DELETE FROM media_assets WHERE id = $1")
+                .bind(media_id)
+                .execute(&pool)
+                .await;
+        }
+    }
 }

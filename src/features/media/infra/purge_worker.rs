@@ -1,57 +1,179 @@
 use chrono::Utc;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::common::http::error::AppError;
 use crate::features::media::{FileStorage, MediaRepository};
 
-pub struct MediaCleanupWorker {
+/// Background worker that purges soft-deleted media assets from CDN storage and database records,
+/// respecting active game locks and pack dependencies.
+pub struct MediaPurgeWorker {
     media_repo: Arc<dyn MediaRepository>,
     file_storage: Arc<dyn FileStorage>,
+    pending_ttl: chrono::Duration,
 }
 
-impl MediaCleanupWorker {
+/// Backward compatibility alias
+pub type MediaCleanupWorker = MediaPurgeWorker;
+
+impl MediaPurgeWorker {
     pub fn new(media_repo: Arc<dyn MediaRepository>, file_storage: Arc<dyn FileStorage>) -> Self {
         Self {
             media_repo,
             file_storage,
+            pending_ttl: chrono::Duration::days(1),
         }
+    }
+
+    pub fn with_pending_ttl(mut self, ttl: chrono::Duration) -> Self {
+        self.pending_ttl = ttl;
+        self
+    }
+
+    pub fn pending_ttl(&self) -> chrono::Duration {
+        self.pending_ttl
     }
 
     pub fn start(
         self: Arc<Self>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
-        info!("Starting media cleanup background worker");
+        info!(
+            worker = "media_purge",
+            "Starting media purge background worker"
+        );
         tokio::spawn(async move {
+            let mut backoff_secs = 1;
             loop {
                 if *shutdown_rx.borrow() {
-                    info!("Shutdown signal received, stopping media cleanup worker");
+                    info!(
+                        worker = "media_purge",
+                        "Shutdown signal received, stopping media purge worker"
+                    );
                     break;
                 }
 
-                if let Err(err) = self.process_pending_purges().await {
-                    error!("Error in media cleanup worker iteration: {:?}", err);
-                }
+                let self_clone = self.clone();
+                let task_handle =
+                    tokio::spawn(async move { self_clone.process_pending_purges().await });
 
-                tokio::select! {
-                    _ = shutdown_rx.changed() => {
-                        info!("Shutdown signal received during sleep, stopping media cleanup worker");
-                        break;
+                match task_handle.await {
+                    Ok(Ok(processed_count)) => {
+                        backoff_secs = 1;
+                        if processed_count >= 20 {
+                            debug!(
+                                worker = "media_purge",
+                                count = processed_count,
+                                "Batch full, draining next purge items immediately"
+                            );
+                            tokio::task::yield_now().await;
+                            continue;
+                        }
+
+                        // Queue drained or empty, sleep default 10s interval
+                        tokio::select! {
+                            _ = shutdown_rx.changed() => {
+                                info!(
+                                    worker = "media_purge",
+                                    "Shutdown signal received during sleep, stopping media purge worker"
+                                );
+                                break;
+                            }
+                            _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                        }
                     }
-                    _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                    Ok(Err(err)) => {
+                        error!(
+                            worker = "media_purge",
+                            error = ?err,
+                            "Error in media purge worker iteration"
+                        );
+                        backoff_secs = std::cmp::min(backoff_secs * 2, 16);
+                        tokio::select! {
+                            _ = shutdown_rx.changed() => break,
+                            _ = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
+                        }
+                    }
+                    Err(join_err) => {
+                        if join_err.is_panic() {
+                            error!(
+                                worker = "media_purge",
+                                "Panic detected in media purge task! Continuing safely."
+                            );
+                        } else {
+                            error!(
+                                worker = "media_purge",
+                                error = ?join_err,
+                                "Media purge task joined with error"
+                            );
+                        }
+                        backoff_secs = std::cmp::min(backoff_secs * 2, 16);
+                        tokio::select! {
+                            _ = shutdown_rx.changed() => break,
+                            _ = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
+                        }
+                    }
                 }
             }
         })
     }
 
-    pub async fn process_pending_purges(&self) -> Result<(), AppError> {
-        let tasks = self.media_repo.fetch_pending_purge_tasks(20).await?;
-        if tasks.is_empty() {
-            return Ok(());
+    /// Purges stale pending media assets directly and processes up to 20 queue purge tasks sequentially.
+    /// Returns the total number of items handled in this batch.
+    pub async fn process_pending_purges(&self) -> Result<usize, AppError> {
+        let mut total_processed = 0;
+
+        // 1. Directly purge stale pending media assets abandoned > pending_ttl ago (default 1 day)
+        let older_than = Utc::now() - self.pending_ttl;
+        let stale_assets = self
+            .media_repo
+            .fetch_stale_pending_media(older_than, 20)
+            .await?;
+
+        for asset in stale_assets {
+            // Safety check: is this media asset actually used in any non-deleted pack?
+            // If so, it shouldn't be pending, so self-heal it to 'attached' instead of deleting!
+            if self
+                .media_repo
+                .is_media_used_in_active_packs(asset.id)
+                .await?
+            {
+                warn!(
+                    worker = "media_purge",
+                    media_asset_id = asset.id,
+                    "Found stale pending media that is actually used in active packs. Self-healing to 'attached'."
+                );
+                self.media_repo.mark_attached(&[asset.id]).await?;
+                continue;
+            }
+
+            let delete_result = self.file_storage.delete(&asset.provider_file_id).await;
+            match delete_result {
+                Ok(()) | Err(AppError::NotFound(_)) | Err(AppError::ValidationError(_)) => {
+                    info!(
+                        worker = "media_purge",
+                        media_asset_id = asset.id,
+                        file_id = %asset.provider_file_id,
+                        "Purged stale pending media from CDN, deleting database record"
+                    );
+                    self.media_repo.delete_by_id(asset.id).await?;
+                    total_processed += 1;
+                }
+                Err(err) => {
+                    error!(
+                        worker = "media_purge",
+                        media_asset_id = asset.id,
+                        file_id = %asset.provider_file_id,
+                        error = ?err,
+                        "Failed to delete stale pending media from CDN"
+                    );
+                }
+            }
         }
 
+        // 2. Fetch up to 20 purge tasks from media_purge_tasks (for soft-deleted packs/memes)
+        let tasks = self.media_repo.fetch_pending_purge_tasks(20).await?;
         for task in tasks {
             // 1. Is this media asset currently in an active game?
             if self
@@ -74,10 +196,12 @@ impl MediaCleanupWorker {
                 .await?
             {
                 info!(
+                    worker = "media_purge",
                     media_asset_id = task.media_asset_id,
                     "Media is still in use by another active pack. Canceling purge task."
                 );
                 self.media_repo.complete_purge_task(task.id).await?;
+                total_processed += 1;
                 continue;
             }
 
@@ -86,18 +210,22 @@ impl MediaCleanupWorker {
             match delete_result {
                 Ok(()) | Err(AppError::NotFound(_)) => {
                     info!(
+                        worker = "media_purge",
                         media_asset_id = task.media_asset_id,
                         file_id = %task.provider_file_id,
                         "Successfully deleted file from CDN, removing media asset record"
                     );
                     self.media_repo.delete_by_id(task.media_asset_id).await?;
                     self.media_repo.complete_purge_task(task.id).await?;
+                    total_processed += 1;
                 }
                 Err(err) => {
                     error!(
+                        worker = "media_purge",
                         media_asset_id = task.media_asset_id,
                         file_id = %task.provider_file_id,
-                        "Failed to delete file from CDN: {:?}", err
+                        error = ?err,
+                        "Failed to delete file from CDN"
                     );
                     let backoff = chrono::Duration::seconds(
                         (2_i64.pow((task.retry_count.min(10) + 1) as u32) * 10).min(3600),
@@ -110,7 +238,7 @@ impl MediaCleanupWorker {
             }
         }
 
-        Ok(())
+        Ok(total_processed)
     }
 }
 
@@ -118,7 +246,8 @@ impl MediaCleanupWorker {
 mod tests {
     use super::*;
     use crate::features::media::{
-        CreateMediaAsset, MediaAsset, MediaProvider, MediaPurgeTask, StoredFile, UploadFile,
+        CreateMediaAsset, MediaAsset, MediaProvider, MediaPurgeTask, MediaStatus, MediaVisibility,
+        StoredFile, UploadFile,
     };
     use async_trait::async_trait;
     use chrono::DateTime;
@@ -132,6 +261,9 @@ mod tests {
         completed_task_ids: Mutex<Vec<Uuid>>,
         failed_tasks: Mutex<Vec<(Uuid, String, DateTime<Utc>)>>,
         deleted_media_ids: Mutex<Vec<i64>>,
+        stale_pending: Mutex<Vec<MediaAsset>>,
+        fetched_stale_args: Mutex<Vec<(DateTime<Utc>, i64)>>,
+        marked_attached_ids: Mutex<Vec<i64>>,
     }
 
     impl MockMediaRepository {
@@ -143,6 +275,9 @@ mod tests {
                 completed_task_ids: Mutex::new(Vec::new()),
                 failed_tasks: Mutex::new(Vec::new()),
                 deleted_media_ids: Mutex::new(Vec::new()),
+                stale_pending: Mutex::new(Vec::new()),
+                fetched_stale_args: Mutex::new(Vec::new()),
+                marked_attached_ids: Mutex::new(Vec::new()),
             }
         }
     }
@@ -183,8 +318,12 @@ mod tests {
         ) -> Result<bool, AppError> {
             todo!()
         }
-        async fn mark_attached(&self, _ids: &[i64]) -> Result<(), AppError> {
-            todo!()
+        async fn mark_attached(&self, ids: &[i64]) -> Result<(), AppError> {
+            self.marked_attached_ids
+                .lock()
+                .unwrap()
+                .extend_from_slice(ids);
+            Ok(())
         }
         async fn validate_exists(&self, _ids: &[i64]) -> Result<(), AppError> {
             todo!()
@@ -194,6 +333,17 @@ mod tests {
             _media_ids: &[i64],
         ) -> Result<(), AppError> {
             todo!()
+        }
+        async fn fetch_stale_pending_media(
+            &self,
+            older_than: DateTime<Utc>,
+            limit: i64,
+        ) -> Result<Vec<MediaAsset>, AppError> {
+            self.fetched_stale_args
+                .lock()
+                .unwrap()
+                .push((older_than, limit));
+            Ok(self.stale_pending.lock().unwrap().clone())
         }
         async fn fetch_pending_purge_tasks(
             &self,
@@ -405,5 +555,103 @@ mod tests {
             .await
             .expect("Worker must stop promptly upon shutdown signal")
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_worker_purges_stale_pending_media() {
+        let repo = Arc::new(MockMediaRepository::new(Vec::new()));
+        let storage = Arc::new(MockFileStorage::new(Ok(())));
+
+        let sample_stale_asset = MediaAsset {
+            id: 201,
+            owner_user_id: Uuid::new_v4().to_string(),
+            provider: MediaProvider::HackClubCdn,
+            provider_file_id: "stale_file_201".to_string(),
+            url: "https://cdn.example.com/stale_201.png".to_string(),
+            filename: "stale.png".to_string(),
+            content_type: "image/png".to_string(),
+            size_bytes: 1024,
+            status: MediaStatus::Pending,
+            visibility: MediaVisibility::Private,
+            created_at: Utc::now() - chrono::Duration::days(2),
+        };
+        repo.stale_pending.lock().unwrap().push(sample_stale_asset);
+
+        // 1. Default TTL is 1 day (24 hours)
+        let worker = MediaCleanupWorker::new(repo.clone(), storage.clone());
+        assert_eq!(worker.pending_ttl(), chrono::Duration::days(1));
+
+        let now_before = Utc::now();
+        let processed = worker.process_pending_purges().await.unwrap();
+        assert_eq!(processed, 1);
+
+        // Verify CDN delete was called
+        assert_eq!(
+            *storage.deleted_file_ids.lock().unwrap(),
+            vec!["stale_file_201"]
+        );
+        // Verify DB delete was called
+        assert_eq!(*repo.deleted_media_ids.lock().unwrap(), vec![201]);
+
+        {
+            let args = repo.fetched_stale_args.lock().unwrap();
+            assert_eq!(args.len(), 1);
+            let (older_than, limit) = args[0];
+            assert_eq!(limit, 20);
+            let expected = now_before - chrono::Duration::days(1);
+            assert!((older_than - expected).num_seconds().abs() < 5);
+        }
+
+        // 2. Custom TTL with with_pending_ttl
+        let custom_ttl = chrono::Duration::hours(2);
+        let custom_worker =
+            MediaCleanupWorker::new(repo.clone(), storage.clone()).with_pending_ttl(custom_ttl);
+        assert_eq!(custom_worker.pending_ttl(), custom_ttl);
+
+        let now_custom = Utc::now();
+        custom_worker.process_pending_purges().await.unwrap();
+
+        {
+            let args_custom = repo.fetched_stale_args.lock().unwrap();
+            assert_eq!(args_custom.len(), 2);
+            let (older_than_custom, _) = args_custom[1];
+            let expected_custom = now_custom - custom_ttl;
+            assert!((older_than_custom - expected_custom).num_seconds().abs() < 5);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_worker_self_heals_pending_media_used_in_active_packs() {
+        let repo = Arc::new(MockMediaRepository::new(Vec::new()));
+        let storage = Arc::new(MockFileStorage::new(Ok(())));
+
+        let sample_stale_asset = MediaAsset {
+            id: 301,
+            owner_user_id: Uuid::new_v4().to_string(),
+            provider: MediaProvider::HackClubCdn,
+            provider_file_id: "in_use_file_301".to_string(),
+            url: "https://cdn.example.com/in_use_301.png".to_string(),
+            filename: "in_use.png".to_string(),
+            content_type: "image/png".to_string(),
+            size_bytes: 1024,
+            status: MediaStatus::Pending,
+            visibility: MediaVisibility::Private,
+            created_at: Utc::now() - chrono::Duration::days(2),
+        };
+        repo.stale_pending.lock().unwrap().push(sample_stale_asset);
+
+        // Mark that this media IS used in an active pack!
+        *repo.is_used.lock().unwrap() = true;
+
+        let worker = MediaCleanupWorker::new(repo.clone(), storage.clone());
+        let processed = worker.process_pending_purges().await.unwrap();
+
+        // Must NOT delete from CDN
+        assert!(storage.deleted_file_ids.lock().unwrap().is_empty());
+        // Must NOT delete from DB
+        assert!(repo.deleted_media_ids.lock().unwrap().is_empty());
+        // Must self-heal to 'attached'
+        assert_eq!(*repo.marked_attached_ids.lock().unwrap(), vec![301]);
+        assert_eq!(processed, 0);
     }
 }

@@ -9,30 +9,53 @@ use crate::{
     },
 };
 
-pub struct GameTimerWorker {
+/// Background worker that monitors active game rounds and processes turn/voting timeouts.
+pub struct RoundTimeoutWorker {
+    worker_id: Uuid,
     repo: Arc<dyn GameRepository>,
     process_timeout: Arc<ProcessTimeoutCommand>,
 }
 
-impl GameTimerWorker {
+/// Backward compatibility alias
+pub type GameTimerWorker = RoundTimeoutWorker;
+
+impl RoundTimeoutWorker {
     pub fn new(repo: Arc<dyn GameRepository>, process_timeout: Arc<ProcessTimeoutCommand>) -> Self {
         Self {
+            worker_id: Uuid::new_v4(),
             repo,
             process_timeout,
         }
+    }
+
+    pub fn with_worker_id(mut self, worker_id: Uuid) -> Self {
+        self.worker_id = worker_id;
+        self
+    }
+
+    pub fn worker_id(&self) -> Uuid {
+        self.worker_id
     }
 
     pub fn start(
         self: Arc<Self>,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) -> tokio::task::JoinHandle<()> {
-        let worker_id = Uuid::new_v4();
-        tracing::info!(worker_id = %worker_id, "Starting game timer background worker");
+        let worker_id = self.worker_id;
+        tracing::info!(
+            worker = "round_timeout",
+            worker_id = %worker_id,
+            "Starting round timeout background worker"
+        );
         tokio::spawn(async move {
             let mut backoff_secs = 1;
             loop {
                 if *shutdown_rx.borrow() {
-                    tracing::info!(worker_id = %worker_id, "Shutdown signal received, stopping game timer background worker");
+                    tracing::info!(
+                        worker = "round_timeout",
+                        worker_id = %worker_id,
+                        "Shutdown signal received, stopping round timeout background worker"
+                    );
                     break;
                 }
 
@@ -44,42 +67,55 @@ impl GameTimerWorker {
                 match task_handle.await {
                     Ok(Ok(true)) => {
                         backoff_secs = 1;
+                        // Queue draining: continue immediately to check for any other expired rounds
+                        tokio::task::yield_now().await;
                         continue;
                     }
                     Ok(Ok(false)) => {
                         backoff_secs = 1;
                         tokio::select! {
                             _ = shutdown_rx.changed() => {
-                                tracing::info!(worker_id = %worker_id, "Shutdown signal received during sleep, stopping game timer background worker");
+                                tracing::info!(
+                                    worker = "round_timeout",
+                                    worker_id = %worker_id,
+                                    "Shutdown signal received during sleep, stopping round timeout background worker"
+                                );
                                 break;
                             }
                             _ = tokio::time::sleep(Duration::from_millis(500)) => {}
                         }
                     }
                     Ok(Err(err)) => {
-                        tracing::error!("Error claiming/processing expired round: {:?}", err);
+                        tracing::error!(
+                            worker = "round_timeout",
+                            worker_id = %worker_id,
+                            error = ?err,
+                            "Error claiming/processing expired round"
+                        );
                         backoff_secs = std::cmp::min(backoff_secs * 2, 16);
                         tokio::select! {
-                            _ = shutdown_rx.changed() => {
-                                break;
-                            }
+                            _ = shutdown_rx.changed() => break,
                             _ = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
                         }
                     }
                     Err(join_err) => {
                         if join_err.is_panic() {
-                            tracing::error!("Panic detected in round processing task!");
+                            tracing::error!(
+                                worker = "round_timeout",
+                                worker_id = %worker_id,
+                                "Panic detected in round processing task! Continuing safely."
+                            );
                         } else {
                             tracing::error!(
-                                "Round processing task joined with error: {:?}",
-                                join_err
+                                worker = "round_timeout",
+                                worker_id = %worker_id,
+                                error = ?join_err,
+                                "Round processing task joined with error"
                             );
                         }
                         backoff_secs = std::cmp::min(backoff_secs * 2, 16);
                         tokio::select! {
-                            _ = shutdown_rx.changed() => {
-                                break;
-                            }
+                            _ = shutdown_rx.changed() => break,
                             _ = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
                         }
                     }
@@ -88,6 +124,12 @@ impl GameTimerWorker {
         })
     }
 
+    /// Processes the next expired round using the worker's own worker_id.
+    pub async fn process_next_round(&self) -> Result<bool, AppError> {
+        self.process_single_expired_round(self.worker_id).await
+    }
+
+    /// Claims and processes the next expired round with a custom worker_id lease.
     pub async fn process_single_expired_round(&self, worker_id: Uuid) -> Result<bool, AppError> {
         let now = chrono::Utc::now();
         // A claim lease lasts for 30 seconds. If a worker hasn't finished in 30 seconds (or crashed),
@@ -100,6 +142,7 @@ impl GameTimerWorker {
             .await?
         {
             tracing::info!(
+                worker = "round_timeout",
                 round_id = %round.id,
                 game_id = %round.game_id,
                 phase = ?round.phase,
@@ -108,6 +151,7 @@ impl GameTimerWorker {
             );
             if let Err(err) = self.process_timeout.execute(round.id).await {
                 tracing::error!(
+                    worker = "round_timeout",
                     round_id = %round.id,
                     error = ?err,
                     "Failed to process round timeout"

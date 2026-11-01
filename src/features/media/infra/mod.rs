@@ -1,2 +1,2 @@
 pub mod adapters;
-pub mod cleanup_worker;
+pub mod purge_worker;
