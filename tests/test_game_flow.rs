@@ -21,7 +21,7 @@ use meme_battle_backend::{
     },
     features::game::{
         api::dto::{GameStateDto, ReadyRequest},
-        GameCard, GameMode, RoundPhase, GameRepository, GameRepositoryImpl,
+        GameCard, GameMode, GameRepository, GameRepositoryImpl, RoundPhase,
     },
 };
 
@@ -88,46 +88,115 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     let base_url = format!("http://{}", app_addr);
 
     // 5. Register 3 Guest Users
-    let resp1 = client.post(format!("{}/auth/guest", base_url)).send().await.unwrap();
+    let resp1 = client
+        .post(format!("{}/auth/guest", base_url))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp1.status(), StatusCode::OK);
     let auth_body1: RestApiResponse<Value> = resp1.json().await.unwrap();
-    let token1 = auth_body1.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    let token1 = auth_body1
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    let resp2 = client.post(format!("{}/auth/guest", base_url)).send().await.unwrap();
+    let resp2 = client
+        .post(format!("{}/auth/guest", base_url))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp2.status(), StatusCode::OK);
     let auth_body2: RestApiResponse<Value> = resp2.json().await.unwrap();
-    let token2 = auth_body2.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    let token2 = auth_body2
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    let resp3 = client.post(format!("{}/auth/guest", base_url)).send().await.unwrap();
+    let resp3 = client
+        .post(format!("{}/auth/guest", base_url))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(resp3.status(), StatusCode::OK);
     let auth_body3: RestApiResponse<Value> = resp3.json().await.unwrap();
-    let token3 = auth_body3.0.data.unwrap().get("access_token").unwrap().as_str().unwrap().to_string();
+    let token3 = auth_body3
+        .0
+        .data
+        .unwrap()
+        .get("access_token")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
 
-    let claims1 = decode::<Claims>(&token1, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default()).unwrap().claims;
+    let claims1 = decode::<Claims>(
+        &token1,
+        &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret),
+        &Validation::default(),
+    )
+    .unwrap()
+    .claims;
     let user_id1 = Uuid::parse_str(&claims1.sub).unwrap();
-    let claims2 = decode::<Claims>(&token2, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default()).unwrap().claims;
+    let claims2 = decode::<Claims>(
+        &token2,
+        &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret),
+        &Validation::default(),
+    )
+    .unwrap()
+    .claims;
     let user_id2 = Uuid::parse_str(&claims2.sub).unwrap();
-    let claims3 = decode::<Claims>(&token3, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &Validation::default()).unwrap().claims;
+    let claims3 = decode::<Claims>(
+        &token3,
+        &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret),
+        &Validation::default(),
+    )
+    .unwrap()
+    .claims;
     let user_id3 = Uuid::parse_str(&claims3.sub).unwrap();
 
     // 6. Upload 6 files to our media API using mock CDN (required: P=3, H=1, R=1 -> memes: 3*1 + 3*1 = 6)
     let mut media_ids = Vec::new();
     for i in 1..=6 {
-        let form = reqwest::multipart::Form::new()
-            .part("file", reqwest::multipart::Part::bytes(vec![1, 2, 3])
+        let form = reqwest::multipart::Form::new().part(
+            "file",
+            reqwest::multipart::Part::bytes(vec![1, 2, 3])
                 .file_name(format!("meme_{}.png", i))
                 .mime_str("image/png")
-                .unwrap());
+                .unwrap(),
+        );
 
-        let upload_resp = client.post(format!("{}/media/upload/image", base_url))
+        let upload_resp = client
+            .post(format!("{}/media/upload/image", base_url))
             .bearer_auth(&token1)
             .multipart(form)
             .send()
             .await
             .unwrap();
-        assert_eq!(upload_resp.status(), StatusCode::OK, "Failed to upload image {}", i);
+        assert_eq!(
+            upload_resp.status(),
+            StatusCode::OK,
+            "Failed to upload image {}",
+            i
+        );
         let upload_body: RestApiResponse<Value> = upload_resp.json().await.unwrap();
-        let m_id = upload_body.0.data.unwrap().get("id").unwrap().as_i64().unwrap();
+        let m_id = upload_body
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_i64()
+            .unwrap();
         media_ids.push(m_id);
     }
 
@@ -149,7 +218,8 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         "is_public": false,
         "media_ids": media_ids
     });
-    let create_pack_resp = client.post(format!("{}/games/packs/memes", base_url))
+    let create_pack_resp = client
+        .post(format!("{}/games/packs/memes", base_url))
         .bearer_auth(&token1)
         .json(&create_pack_payload)
         .send()
@@ -157,7 +227,17 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .unwrap();
     assert_eq!(create_pack_resp.status(), StatusCode::OK);
     let pack_body: RestApiResponse<Value> = create_pack_resp.json().await.unwrap();
-    let pack_id = Uuid::parse_str(pack_body.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+    let pack_id = Uuid::parse_str(
+        pack_body
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     // Verify media asset status has updated to 'attached' and 'public'
     let media_row_attached = sqlx::query("SELECT status::text as status, visibility::text as visibility FROM media_assets WHERE id = $1")
@@ -169,17 +249,31 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     assert_eq!(media_row_attached.get::<String, _>("visibility"), "public");
 
     // 8. Delete a pack meme and test non-active deletion
-    let get_pack_resp = client.get(format!("{}/games/packs/memes/{}", base_url, pack_id))
+    let get_pack_resp = client
+        .get(format!("{}/games/packs/memes/{}", base_url, pack_id))
         .bearer_auth(&token1)
         .send()
         .await
         .unwrap();
     assert_eq!(get_pack_resp.status(), StatusCode::OK);
     let get_pack_body: RestApiResponse<Value> = get_pack_resp.json().await.unwrap();
-    let memes_array = get_pack_body.0.data.unwrap().get("memes").unwrap().as_array().unwrap().clone();
-    let pack_meme_id = Uuid::parse_str(memes_array[0].get("id").unwrap().as_str().unwrap()).unwrap();
+    let memes_array = get_pack_body
+        .0
+        .data
+        .unwrap()
+        .get("memes")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone();
+    let pack_meme_id =
+        Uuid::parse_str(memes_array[0].get("id").unwrap().as_str().unwrap()).unwrap();
 
-    let del_meme_resp = client.delete(format!("{}/games/packs/memes/{}/memes/{}", base_url, pack_id, pack_meme_id))
+    let del_meme_resp = client
+        .delete(format!(
+            "{}/games/packs/memes/{}/memes/{}",
+            base_url, pack_id, pack_meme_id
+        ))
         .bearer_auth(&token1)
         .send()
         .await
@@ -187,20 +281,34 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     assert_eq!(del_meme_resp.status(), StatusCode::OK);
 
     // Upload 7th file and add it to pack to keep required amount (6 memes)
-    let form7 = reqwest::multipart::Form::new()
-        .part("file", reqwest::multipart::Part::bytes(vec![1, 2, 3])
+    let form7 = reqwest::multipart::Form::new().part(
+        "file",
+        reqwest::multipart::Part::bytes(vec![1, 2, 3])
             .file_name("meme_7.png")
             .mime_str("image/png")
-            .unwrap());
-    let upload_resp7 = client.post(format!("{}/media/upload/image", base_url))
+            .unwrap(),
+    );
+    let upload_resp7 = client
+        .post(format!("{}/media/upload/image", base_url))
         .bearer_auth(&token1)
         .multipart(form7)
         .send()
         .await
         .unwrap();
-    let m_id7 = upload_resp7.json::<RestApiResponse<Value>>().await.unwrap().0.data.unwrap().get("id").unwrap().as_i64().unwrap();
+    let m_id7 = upload_resp7
+        .json::<RestApiResponse<Value>>()
+        .await
+        .unwrap()
+        .0
+        .data
+        .unwrap()
+        .get("id")
+        .unwrap()
+        .as_i64()
+        .unwrap();
 
-    let add_meme_resp = client.post(format!("{}/games/packs/memes/{}/memes", base_url, pack_id))
+    let add_meme_resp = client
+        .post(format!("{}/games/packs/memes/{}/memes", base_url, pack_id))
         .bearer_auth(&token1)
         .json(&json!({ "media_ids": vec![m_id7] }))
         .send()
@@ -209,14 +317,24 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     assert_eq!(add_meme_resp.status(), StatusCode::OK);
 
     // Fetch the updated pack memes to find a valid pack meme ID to test lock blocking
-    let get_pack_resp2 = client.get(format!("{}/games/packs/memes/{}", base_url, pack_id))
+    let get_pack_resp2 = client
+        .get(format!("{}/games/packs/memes/{}", base_url, pack_id))
         .bearer_auth(&token1)
         .send()
         .await
         .unwrap();
     let get_pack_body2: RestApiResponse<Value> = get_pack_resp2.json().await.unwrap();
-    let memes_array2 = get_pack_body2.0.data.unwrap().get("memes").unwrap().as_array().unwrap().clone();
-    let pack_meme_id2 = Uuid::parse_str(memes_array2[0].get("id").unwrap().as_str().unwrap()).unwrap();
+    let memes_array2 = get_pack_body2
+        .0
+        .data
+        .unwrap()
+        .get("memes")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone();
+    let pack_meme_id2 =
+        Uuid::parse_str(memes_array2[0].get("id").unwrap().as_str().unwrap()).unwrap();
 
     // 9. Create Situation Pack
     let create_sit_payload = json!({
@@ -227,7 +345,8 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         "is_public": false,
         "prompts": vec!["Flow prompt 1", "Flow prompt 2"]
     });
-    let create_sit_resp = client.post(format!("{}/games/packs/situations", base_url))
+    let create_sit_resp = client
+        .post(format!("{}/games/packs/situations", base_url))
         .bearer_auth(&token1)
         .json(&create_sit_payload)
         .send()
@@ -235,7 +354,17 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .unwrap();
     assert_eq!(create_sit_resp.status(), StatusCode::OK);
     let sit_body: RestApiResponse<Value> = create_sit_resp.json().await.unwrap();
-    let sit_pack_id = Uuid::parse_str(sit_body.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+    let sit_pack_id = Uuid::parse_str(
+        sit_body
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     // --- TIMEOUT FLOW TEST (GAME 1) ---
     let create_game_payload_timeout = json!({
@@ -246,7 +375,8 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         "max_rounds": 1,
         "hand_size": 1
     });
-    let create_game_resp_1 = client.post(format!("{}/games", base_url))
+    let create_game_resp_1 = client
+        .post(format!("{}/games", base_url))
         .bearer_auth(&token1)
         .json(&create_game_payload_timeout)
         .send()
@@ -254,19 +384,58 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .unwrap();
     assert_eq!(create_game_resp_1.status(), StatusCode::OK);
     let game_resp_1: RestApiResponse<Value> = create_game_resp_1.json().await.unwrap();
-    let game_id_1 = Uuid::parse_str(game_resp_1.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+    let game_id_1 = Uuid::parse_str(
+        game_resp_1
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     // Join Players
-    client.post(format!("{}/games/{}/join", base_url, game_id_1)).bearer_auth(&token2).send().await.unwrap();
-    client.post(format!("{}/games/{}/join", base_url, game_id_1)).bearer_auth(&token3).send().await.unwrap();
+    client
+        .post(format!("{}/games/{}/join", base_url, game_id_1))
+        .bearer_auth(&token2)
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/games/{}/join", base_url, game_id_1))
+        .bearer_auth(&token3)
+        .send()
+        .await
+        .unwrap();
 
     // Ready All
-    client.post(format!("{}/games/{}/ready", base_url, game_id_1)).bearer_auth(&token1).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
-    client.post(format!("{}/games/{}/ready", base_url, game_id_1)).bearer_auth(&token2).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
-    client.post(format!("{}/games/{}/ready", base_url, game_id_1)).bearer_auth(&token3).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
+    client
+        .post(format!("{}/games/{}/ready", base_url, game_id_1))
+        .bearer_auth(&token1)
+        .json(&ReadyRequest { is_ready: true })
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/games/{}/ready", base_url, game_id_1))
+        .bearer_auth(&token2)
+        .json(&ReadyRequest { is_ready: true })
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/games/{}/ready", base_url, game_id_1))
+        .bearer_auth(&token3)
+        .json(&ReadyRequest { is_ready: true })
+        .send()
+        .await
+        .unwrap();
 
     // Start game
-    let start_resp_1 = client.post(format!("{}/games/{}/start", base_url, game_id_1))
+    let start_resp_1 = client
+        .post(format!("{}/games/{}/start", base_url, game_id_1))
         .bearer_auth(&token1)
         .send()
         .await
@@ -274,7 +443,12 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     assert_eq!(start_resp_1.status(), StatusCode::OK);
 
     // Get current round
-    let state_resp_1 = client.get(format!("{}/games/{}/state", base_url, game_id_1)).bearer_auth(&token1).send().await.unwrap();
+    let state_resp_1 = client
+        .get(format!("{}/games/{}/state", base_url, game_id_1))
+        .bearer_auth(&token1)
+        .send()
+        .await
+        .unwrap();
     let state_dto_1: RestApiResponse<GameStateDto> = state_resp_1.json().await.unwrap();
     let state_1 = state_dto_1.0.data.unwrap();
     let round_id_1 = state_1.round.as_ref().unwrap().id;
@@ -288,13 +462,26 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .unwrap();
 
     // Trigger background worker process step
-    app_state.game.process_timeout.execute(round_id_1).await.unwrap();
+    app_state
+        .game
+        .process_timeout
+        .execute(round_id_1)
+        .await
+        .unwrap();
 
     // Fetch state again and verify it is in Voting phase
-    let state_resp_voting = client.get(format!("{}/games/{}/state", base_url, game_id_1)).bearer_auth(&token1).send().await.unwrap();
+    let state_resp_voting = client
+        .get(format!("{}/games/{}/state", base_url, game_id_1))
+        .bearer_auth(&token1)
+        .send()
+        .await
+        .unwrap();
     let state_dto_voting: RestApiResponse<GameStateDto> = state_resp_voting.json().await.unwrap();
     let state_voting = state_dto_voting.0.data.unwrap();
-    assert_eq!(state_voting.round.as_ref().unwrap().phase, RoundPhase::Voting);
+    assert_eq!(
+        state_voting.round.as_ref().unwrap().phase,
+        RoundPhase::Voting
+    );
 
     // Manually set voting phase_expires_at to the past to trigger timeout
     sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
@@ -305,10 +492,19 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .unwrap();
 
     // Trigger background worker process step again
-    app_state.game.process_timeout.execute(round_id_1).await.unwrap();
+    app_state
+        .game
+        .process_timeout
+        .execute(round_id_1)
+        .await
+        .unwrap();
 
     // Verify game status is finished
-    let game_row_1 = sqlx::query("SELECT status::text as status FROM games WHERE id = $1").bind(game_id_1).fetch_one(&pool).await.unwrap();
+    let game_row_1 = sqlx::query("SELECT status::text as status FROM games WHERE id = $1")
+        .bind(game_id_1)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(game_row_1.get::<String, _>("status"), "finished");
     // --- END TIMEOUT FLOW TEST (GAME 1) ---
 
@@ -321,7 +517,8 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         "max_rounds": 1,
         "hand_size": 1
     });
-    let create_game_resp = client.post(format!("{}/games", base_url))
+    let create_game_resp = client
+        .post(format!("{}/games", base_url))
         .bearer_auth(&token1)
         .json(&create_game_payload)
         .send()
@@ -329,21 +526,60 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .unwrap();
     assert_eq!(create_game_resp.status(), StatusCode::OK);
     let game_resp: RestApiResponse<Value> = create_game_resp.json().await.unwrap();
-    let game_id = Uuid::parse_str(game_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+    let game_id = Uuid::parse_str(
+        game_resp
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     // Join Players
-    let join_resp2 = client.post(format!("{}/games/{}/join", base_url, game_id)).bearer_auth(&token2).send().await.unwrap();
+    let join_resp2 = client
+        .post(format!("{}/games/{}/join", base_url, game_id))
+        .bearer_auth(&token2)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(join_resp2.status(), StatusCode::OK);
-    let join_resp3 = client.post(format!("{}/games/{}/join", base_url, game_id)).bearer_auth(&token3).send().await.unwrap();
+    let join_resp3 = client
+        .post(format!("{}/games/{}/join", base_url, game_id))
+        .bearer_auth(&token3)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(join_resp3.status(), StatusCode::OK);
 
     // Ready All
-    client.post(format!("{}/games/{}/ready", base_url, game_id)).bearer_auth(&token1).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
-    client.post(format!("{}/games/{}/ready", base_url, game_id)).bearer_auth(&token2).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
-    client.post(format!("{}/games/{}/ready", base_url, game_id)).bearer_auth(&token3).json(&ReadyRequest { is_ready: true }).send().await.unwrap();
+    client
+        .post(format!("{}/games/{}/ready", base_url, game_id))
+        .bearer_auth(&token1)
+        .json(&ReadyRequest { is_ready: true })
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/games/{}/ready", base_url, game_id))
+        .bearer_auth(&token2)
+        .json(&ReadyRequest { is_ready: true })
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/games/{}/ready", base_url, game_id))
+        .bearer_auth(&token3)
+        .json(&ReadyRequest { is_ready: true })
+        .send()
+        .await
+        .unwrap();
 
     // Start game
-    let start_resp = client.post(format!("{}/games/{}/start", base_url, game_id))
+    let start_resp = client
+        .post(format!("{}/games/{}/start", base_url, game_id))
         .bearer_auth(&token1)
         .send()
         .await
@@ -359,18 +595,56 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .get::<i64, _>(0);
     assert_eq!(locks_count, 7);
 
-    // 11. Verify ACTIVE locks validation (deletes should return 409 Conflict)
-    let active_del_meme_resp = client.delete(format!("{}/games/packs/memes/{}/memes/{}", base_url, pack_id, pack_meme_id2))
+    // 11. Verify soft-delete during active game (deletes now succeed with 200 OK without interrupting active game)
+    let active_del_meme_resp = client
+        .delete(format!(
+            "{}/games/packs/memes/{}/memes/{}",
+            base_url, pack_id, pack_meme_id2
+        ))
         .bearer_auth(&token1)
         .send()
         .await
         .unwrap();
-    assert_eq!(active_del_meme_resp.status(), StatusCode::CONFLICT);
-    let err_body: RestApiResponse<Value> = active_del_meme_resp.json().await.unwrap();
-    assert!(err_body.0.message.contains("in use by an active game session"));
+    assert_eq!(active_del_meme_resp.status(), StatusCode::OK);
+
+    // Verify it is soft-deleted in DB (deleted_at IS NOT NULL)
+    let is_soft_deleted =
+        sqlx::query("SELECT deleted_at IS NOT NULL as is_del FROM pack_memes WHERE id = $1")
+            .bind(pack_meme_id2)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .get::<bool, _>("is_del");
+    assert!(
+        is_soft_deleted,
+        "Pack meme must be soft-deleted immediately"
+    );
+
+    // Verify content locks still protect the active game session
+    let locks_count_still_active =
+        sqlx::query("SELECT COUNT(*) FROM game_content_locks WHERE game_id = $1")
+            .bind(game_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .get::<i64, _>(0);
+    assert_eq!(locks_count_still_active, 7);
+
+    // Verify media purge task was enqueued
+    let purge_tasks_count = sqlx::query("SELECT COUNT(*) FROM media_purge_tasks")
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get::<i64, _>(0);
+    assert!(purge_tasks_count > 0, "Media purge task must be enqueued");
 
     // 12. Play the game to completion
-    let state_resp1 = client.get(format!("{}/games/{}/state", base_url, game_id)).bearer_auth(&token1).send().await.unwrap();
+    let state_resp1 = client
+        .get(format!("{}/games/{}/state", base_url, game_id))
+        .bearer_auth(&token1)
+        .send()
+        .await
+        .unwrap();
     let state_dto1: RestApiResponse<GameStateDto> = state_resp1.json().await.unwrap();
     let state1 = state_dto1.0.data.unwrap();
     let round_id = state1.round.as_ref().unwrap().id;
@@ -379,7 +653,12 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         GameCard::Situation { id, .. } => *id,
     };
 
-    let state_resp2 = client.get(format!("{}/games/{}/state", base_url, game_id)).bearer_auth(&token2).send().await.unwrap();
+    let state_resp2 = client
+        .get(format!("{}/games/{}/state", base_url, game_id))
+        .bearer_auth(&token2)
+        .send()
+        .await
+        .unwrap();
     let state_dto2: RestApiResponse<GameStateDto> = state_resp2.json().await.unwrap();
     let state2 = state_dto2.0.data.unwrap();
     let card2_id = match &state2.my_hand[0] {
@@ -387,7 +666,12 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         GameCard::Situation { id, .. } => *id,
     };
 
-    let state_resp3 = client.get(format!("{}/games/{}/state", base_url, game_id)).bearer_auth(&token3).send().await.unwrap();
+    let state_resp3 = client
+        .get(format!("{}/games/{}/state", base_url, game_id))
+        .bearer_auth(&token3)
+        .send()
+        .await
+        .unwrap();
     let state_dto3: RestApiResponse<GameStateDto> = state_resp3.json().await.unwrap();
     let state3 = state_dto3.0.data.unwrap();
     let card3_id = match &state3.my_hand[0] {
@@ -396,18 +680,53 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     };
 
     // Submissions
-    client.post(format!("{}/games/{}/submit", base_url, game_id)).bearer_auth(&token1).json(&json!({ "card_id": card1_id })).send().await.unwrap();
-    client.post(format!("{}/games/{}/submit", base_url, game_id)).bearer_auth(&token2).json(&json!({ "card_id": card2_id })).send().await.unwrap();
-    client.post(format!("{}/games/{}/submit", base_url, game_id)).bearer_auth(&token3).json(&json!({ "card_id": card3_id })).send().await.unwrap();
+    client
+        .post(format!("{}/games/{}/submit", base_url, game_id))
+        .bearer_auth(&token1)
+        .json(&json!({ "card_id": card1_id }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/games/{}/submit", base_url, game_id))
+        .bearer_auth(&token2)
+        .json(&json!({ "card_id": card2_id }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/games/{}/submit", base_url, game_id))
+        .bearer_auth(&token3)
+        .json(&json!({ "card_id": card3_id }))
+        .send()
+        .await
+        .unwrap();
 
     // Resolve submissions
-    let db_subs = sqlx::query("SELECT id, user_id FROM round_submissions WHERE round_id = $1").bind(round_id).fetch_all(&pool).await.unwrap();
-    let sub1 = db_subs.iter().find(|s| s.get::<Uuid, _>("user_id") == user_id1).unwrap().get::<Uuid, _>("id");
-    let sub2 = db_subs.iter().find(|s| s.get::<Uuid, _>("user_id") == user_id2).unwrap().get::<Uuid, _>("id");
-    let sub3 = db_subs.iter().find(|s| s.get::<Uuid, _>("user_id") == user_id3).unwrap().get::<Uuid, _>("id");
+    let db_subs = sqlx::query("SELECT id, user_id FROM round_submissions WHERE round_id = $1")
+        .bind(round_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let sub1 = db_subs
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id1)
+        .unwrap()
+        .get::<Uuid, _>("id");
+    let sub2 = db_subs
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id2)
+        .unwrap()
+        .get::<Uuid, _>("id");
+    let sub3 = db_subs
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id3)
+        .unwrap()
+        .get::<Uuid, _>("id");
 
     // Anti-cheat verification: Player 1 tries to vote for their own submission (sub1)
-    let self_vote_resp = client.post(format!("{}/games/{}/vote", base_url, game_id))
+    let self_vote_resp = client
+        .post(format!("{}/games/{}/vote", base_url, game_id))
         .bearer_auth(&token1)
         .json(&json!({ "submission_id": sub1 }))
         .send()
@@ -415,12 +734,33 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .unwrap();
     assert_eq!(self_vote_resp.status(), StatusCode::BAD_REQUEST);
     let self_vote_err: RestApiResponse<Value> = self_vote_resp.json().await.unwrap();
-    assert!(self_vote_err.0.message.contains("Cannot vote for your own submission"));
+    assert!(self_vote_err
+        .0
+        .message
+        .contains("Cannot vote for your own submission"));
 
     // Real Votes (P1→sub2, P2→sub3, P3→sub1 → tally 1:1:1 → first-found = sub1 = user1 wins)
-    client.post(format!("{}/games/{}/vote", base_url, game_id)).bearer_auth(&token1).json(&json!({ "submission_id": sub2 })).send().await.unwrap();
-    client.post(format!("{}/games/{}/vote", base_url, game_id)).bearer_auth(&token2).json(&json!({ "submission_id": sub3 })).send().await.unwrap();
-    let vote_resp3 = client.post(format!("{}/games/{}/vote", base_url, game_id)).bearer_auth(&token3).json(&json!({ "submission_id": sub1 })).send().await.unwrap();
+    client
+        .post(format!("{}/games/{}/vote", base_url, game_id))
+        .bearer_auth(&token1)
+        .json(&json!({ "submission_id": sub2 }))
+        .send()
+        .await
+        .unwrap();
+    client
+        .post(format!("{}/games/{}/vote", base_url, game_id))
+        .bearer_auth(&token2)
+        .json(&json!({ "submission_id": sub3 }))
+        .send()
+        .await
+        .unwrap();
+    let vote_resp3 = client
+        .post(format!("{}/games/{}/vote", base_url, game_id))
+        .bearer_auth(&token3)
+        .json(&json!({ "submission_id": sub1 }))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(vote_resp3.status(), StatusCode::OK);
 
     // ── Score correctness: verify winner's point was credited IMMEDIATELY ──────
@@ -443,10 +783,14 @@ async fn test_full_game_flow_and_lock_lifecycle() {
         .await
         .unwrap()
         .get::<Option<Uuid>, _>("winner_user_id");
-    assert!(round_winner.is_some(), "Round winner_user_id must be set in game_rounds after voting completes");
+    assert!(
+        round_winner.is_some(),
+        "Round winner_user_id must be set in game_rounds after voting completes"
+    );
 
     // 3. HTTP: GET /state after last vote must show the updated score immediately
-    let state_after_vote = client.get(format!("{}/games/{}/state", base_url, game_id))
+    let state_after_vote = client
+        .get(format!("{}/games/{}/state", base_url, game_id))
         .bearer_auth(&token1)
         .send()
         .await
@@ -454,37 +798,52 @@ async fn test_full_game_flow_and_lock_lifecycle() {
     assert_eq!(state_after_vote.status(), StatusCode::OK);
     let state_after_vote_dto: RestApiResponse<Value> = state_after_vote.json().await.unwrap();
     let state_after_vote_data = state_after_vote_dto.0.data.unwrap();
-    let api_players = state_after_vote_data.get("players").unwrap().as_array().unwrap();
-    let total_api_score: i64 = api_players.iter().map(|p| p.get("score").unwrap().as_i64().unwrap()).sum();
+    let api_players = state_after_vote_data
+        .get("players")
+        .unwrap()
+        .as_array()
+        .unwrap();
+    let total_api_score: i64 = api_players
+        .iter()
+        .map(|p| p.get("score").unwrap().as_i64().unwrap())
+        .sum();
     assert_eq!(
         total_api_score, 1,
         "GET /state must reflect the updated score immediately (no deferred scoring)"
     );
 
     // Verify game status is finished
-    let game_row = sqlx::query("SELECT status::text as status FROM games WHERE id = $1").bind(game_id).fetch_one(&pool).await.unwrap();
-    assert_eq!(game_row.get::<String, _>("status"), "finished");
-
-
-
-    // Verify all game content locks are deleted
-    let locks_count_after = sqlx::query("SELECT COUNT(*) FROM game_content_locks WHERE game_id = $1")
+    let game_row = sqlx::query("SELECT status::text as status FROM games WHERE id = $1")
         .bind(game_id)
         .fetch_one(&pool)
         .await
-        .unwrap()
-        .get::<i64, _>(0);
+        .unwrap();
+    assert_eq!(game_row.get::<String, _>("status"), "finished");
+
+    // Verify all game content locks are deleted
+    let locks_count_after =
+        sqlx::query("SELECT COUNT(*) FROM game_content_locks WHERE game_id = $1")
+            .bind(game_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .get::<i64, _>(0);
     assert_eq!(locks_count_after, 0);
 
     // 13. Test deletion after game completion (must succeed due to ON DELETE CASCADE on history)
-    let final_del_pack_resp = client.delete(format!("{}/games/packs/memes/{}", base_url, pack_id))
+    let final_del_pack_resp = client
+        .delete(format!("{}/games/packs/memes/{}", base_url, pack_id))
         .bearer_auth(&token1)
         .send()
         .await
         .unwrap();
     assert_eq!(final_del_pack_resp.status(), StatusCode::OK);
 
-    let final_del_sit_pack_resp = client.delete(format!("{}/games/packs/situations/{}", base_url, sit_pack_id))
+    let final_del_sit_pack_resp = client
+        .delete(format!(
+            "{}/games/packs/situations/{}",
+            base_url, sit_pack_id
+        ))
         .bearer_auth(&token1)
         .send()
         .await
@@ -509,14 +868,14 @@ async fn test_timer_and_concurrency_edge_cases() {
     run_database_migrations(&pool).await.unwrap();
 
     let state = build_app_state(pool.clone(), config);
-    
+
     let test_start = chrono::Utc::now();
     sqlx::query("DELETE FROM games WHERE created_at < $1")
         .bind(test_start)
         .execute(&pool)
         .await
         .unwrap();
-    
+
     // 1. Setup mock users
     let user_id1 = Uuid::new_v4();
     let user_id2 = Uuid::new_v4();
@@ -524,7 +883,7 @@ async fn test_timer_and_concurrency_edge_cases() {
     let username1 = format!("user1_{}", Uuid::new_v4().simple());
     let username2 = format!("user2_{}", Uuid::new_v4().simple());
     let username3 = format!("user3_{}", Uuid::new_v4().simple());
-    
+
     sqlx::query("INSERT INTO users (id, username, role) VALUES ($1, $4, 'user'), ($2, $5, 'user'), ($3, $6, 'user')")
         .bind(user_id1)
         .bind(user_id2)
@@ -553,14 +912,17 @@ async fn test_timer_and_concurrency_edge_cases() {
         .unwrap();
 
     let meme_pack_id = Uuid::new_v4();
-    sqlx::query("INSERT INTO meme_packs (id, author_id, name, language_code) VALUES ($1, $2, 'Pack', 'ru')")
-        .bind(meme_pack_id)
-        .bind(user_id1)
-        .execute(&pool)
-        .await
-        .unwrap();
-        
-    let media_id1 = chrono::Utc::now().timestamp_millis() * 1000 + (rand::random::<i32>().abs() % 1000) as i64;
+    sqlx::query(
+        "INSERT INTO meme_packs (id, author_id, name, language_code) VALUES ($1, $2, 'Pack', 'ru')",
+    )
+    .bind(meme_pack_id)
+    .bind(user_id1)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let media_id1 =
+        chrono::Utc::now().timestamp_millis() * 1000 + (rand::random::<i32>().abs() % 1000) as i64;
     let media_id2 = media_id1 + 1;
     let media_id3 = media_id1 + 2;
     let media_id4 = media_id1 + 3;
@@ -610,15 +972,66 @@ async fn test_timer_and_concurrency_edge_cases() {
     let repo = GameRepositoryImpl::new(pool.clone());
 
     // 3. Create Game
-    let game = state.game.create_game.execute(user_id1, "Flow Test Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
-    state.game.join_game.execute(user_id2, game.id, None).await.unwrap();
-    state.game.join_game.execute(user_id3, game.id, None).await.unwrap();
-    state.game.set_ready.execute(user_id1, game.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id2, game.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id3, game.id, true).await.unwrap();
-    state.game.start_game.execute(user_id1, game.id).await.unwrap();
+    let game = state
+        .game
+        .create_game
+        .execute(
+            user_id1,
+            "Flow Test Game".to_string(),
+            GameMode::SituationToMeme,
+            vec![sit_pack_id],
+            vec![meme_pack_id],
+            1,
+            1,
+            None,
+        )
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(user_id2, game.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(user_id3, game.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(user_id1, game.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(user_id2, game.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(user_id3, game.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .start_game
+        .execute(user_id1, game.id)
+        .await
+        .unwrap();
 
-    let round = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().round.unwrap();
+    let round = state
+        .game
+        .get_game_state
+        .execute(user_id1, game.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
 
     // Test Case 1: Stale Lease Takeover
     let worker_a = Uuid::new_v4();
@@ -634,16 +1047,35 @@ async fn test_timer_and_concurrency_edge_cases() {
         .await
         .unwrap();
 
-    let round_b = state.game.timer_worker.process_single_expired_round(worker_b).await.unwrap();
+    let round_b = state
+        .game
+        .timer_worker
+        .process_single_expired_round(worker_b)
+        .await
+        .unwrap();
     assert!(round_b, "Worker B should take over the stale lease");
 
     // Test Case 2: Concurrency Guard
-    let state_voting = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().round.unwrap();
+    let state_voting = state
+        .game
+        .get_game_state
+        .execute(user_id1, game.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
     assert_eq!(state_voting.phase, RoundPhase::Voting);
 
     state.game.process_timeout.execute(round.id).await.unwrap();
 
-    let state_after_late_call = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().round.unwrap();
+    let state_after_late_call = state
+        .game
+        .get_game_state
+        .execute(user_id1, game.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
     assert_eq!(state_after_late_call.phase, RoundPhase::Voting);
 
     // Test Case 3: Empty Hand Auto-submission skip
@@ -660,15 +1092,66 @@ async fn test_timer_and_concurrency_edge_cases() {
         .await
         .unwrap();
 
-    let game_empty = state.game.create_game.execute(empty_u1, "Empty Hand Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
-    state.game.join_game.execute(empty_u2, game_empty.id, None).await.unwrap();
-    state.game.join_game.execute(empty_u3, game_empty.id, None).await.unwrap();
-    state.game.set_ready.execute(empty_u1, game_empty.id, true).await.unwrap();
-    state.game.set_ready.execute(empty_u2, game_empty.id, true).await.unwrap();
-    state.game.set_ready.execute(empty_u3, game_empty.id, true).await.unwrap();
-    state.game.start_game.execute(empty_u1, game_empty.id).await.unwrap();
+    let game_empty = state
+        .game
+        .create_game
+        .execute(
+            empty_u1,
+            "Empty Hand Game".to_string(),
+            GameMode::SituationToMeme,
+            vec![sit_pack_id],
+            vec![meme_pack_id],
+            1,
+            1,
+            None,
+        )
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(empty_u2, game_empty.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(empty_u3, game_empty.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(empty_u1, game_empty.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(empty_u2, game_empty.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(empty_u3, game_empty.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .start_game
+        .execute(empty_u1, game_empty.id)
+        .await
+        .unwrap();
 
-    let round_empty = state.game.get_game_state.execute(empty_u1, game_empty.id).await.unwrap().round.unwrap();
+    let round_empty = state
+        .game
+        .get_game_state
+        .execute(empty_u1, game_empty.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
 
     sqlx::query("DELETE FROM game_player_hand WHERE game_id = $1 AND user_id = $2")
         .bind(game_empty.id)
@@ -684,9 +1167,21 @@ async fn test_timer_and_concurrency_edge_cases() {
         .await
         .unwrap();
 
-    state.game.process_timeout.execute(round_empty.id).await.unwrap();
+    state
+        .game
+        .process_timeout
+        .execute(round_empty.id)
+        .await
+        .unwrap();
 
-    let state_voting_empty = state.game.get_game_state.execute(empty_u1, game_empty.id).await.unwrap().round.unwrap();
+    let state_voting_empty = state
+        .game
+        .get_game_state
+        .execute(empty_u1, game_empty.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
     assert_eq!(state_voting_empty.phase, RoundPhase::Voting);
 
     // Test Case 4: Zero-Votes Timeout (Nullable Winner)
@@ -697,7 +1192,12 @@ async fn test_timer_and_concurrency_edge_cases() {
         .await
         .unwrap();
 
-    state.game.process_timeout.execute(round_empty.id).await.unwrap();
+    state
+        .game
+        .process_timeout
+        .execute(round_empty.id)
+        .await
+        .unwrap();
 
     let game_empty_status = sqlx::query("SELECT status::text as status FROM games WHERE id = $1")
         .bind(game_empty.id)
@@ -713,7 +1213,10 @@ async fn test_timer_and_concurrency_edge_cases() {
         .await
         .unwrap()
         .get::<Option<Uuid>, _>("winner_user_id");
-    assert!(round_winner.is_none(), "Round winner should be None when there are no votes");
+    assert!(
+        round_winner.is_none(),
+        "Round winner should be None when there are no votes"
+    );
 
     // Score must remain 0 for all players when there is no winner
     let db_zero_scores = sqlx::query("SELECT SUM(score) FROM game_players WHERE game_id = $1")
@@ -723,9 +1226,10 @@ async fn test_timer_and_concurrency_edge_cases() {
         .unwrap()
         .get::<Option<i64>, _>(0)
         .unwrap_or(0);
-    assert_eq!(db_zero_scores, 0, "Total score must be 0 when round ended with no winner (zero-votes timeout)");
-
-
+    assert_eq!(
+        db_zero_scores, 0,
+        "Total score must be 0 when round ended with no winner (zero-votes timeout)"
+    );
 
     // Test Case 5: Partial Submissions Auto-Submit
     let partial_u1 = Uuid::new_v4();
@@ -741,22 +1245,84 @@ async fn test_timer_and_concurrency_edge_cases() {
         .await
         .unwrap();
 
-    let game_partial = state.game.create_game.execute(partial_u1, "Partial Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
-    state.game.join_game.execute(partial_u2, game_partial.id, None).await.unwrap();
-    state.game.join_game.execute(partial_u3, game_partial.id, None).await.unwrap();
-    state.game.set_ready.execute(partial_u1, game_partial.id, true).await.unwrap();
-    state.game.set_ready.execute(partial_u2, game_partial.id, true).await.unwrap();
-    state.game.set_ready.execute(partial_u3, game_partial.id, true).await.unwrap();
-    state.game.start_game.execute(partial_u1, game_partial.id).await.unwrap();
+    let game_partial = state
+        .game
+        .create_game
+        .execute(
+            partial_u1,
+            "Partial Game".to_string(),
+            GameMode::SituationToMeme,
+            vec![sit_pack_id],
+            vec![meme_pack_id],
+            1,
+            1,
+            None,
+        )
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(partial_u2, game_partial.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(partial_u3, game_partial.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(partial_u1, game_partial.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(partial_u2, game_partial.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(partial_u3, game_partial.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .start_game
+        .execute(partial_u1, game_partial.id)
+        .await
+        .unwrap();
 
-    let round_partial = state.game.get_game_state.execute(partial_u1, game_partial.id).await.unwrap().round.unwrap();
+    let round_partial = state
+        .game
+        .get_game_state
+        .execute(partial_u1, game_partial.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
 
-    let hand1 = state.game.get_game_state.execute(partial_u1, game_partial.id).await.unwrap().my_hand;
+    let hand1 = state
+        .game
+        .get_game_state
+        .execute(partial_u1, game_partial.id)
+        .await
+        .unwrap()
+        .my_hand;
     let card_id = match &hand1[0] {
         GameCard::Meme { id, .. } => *id,
         GameCard::Situation { id, .. } => *id,
     };
-    state.game.submit_card.execute(partial_u1, game_partial.id, card_id).await.unwrap();
+    state
+        .game
+        .submit_card
+        .execute(partial_u1, game_partial.id, card_id)
+        .await
+        .unwrap();
 
     sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
         .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
@@ -765,18 +1331,34 @@ async fn test_timer_and_concurrency_edge_cases() {
         .await
         .unwrap();
 
-    state.game.process_timeout.execute(round_partial.id).await.unwrap();
+    state
+        .game
+        .process_timeout
+        .execute(round_partial.id)
+        .await
+        .unwrap();
 
-    let round_partial_after = state.game.get_game_state.execute(partial_u1, game_partial.id).await.unwrap().round.unwrap();
-    assert_eq!(round_partial_after.phase, RoundPhase::Voting);
-
-    let submission_count = sqlx::query("SELECT COUNT(*) FROM round_submissions WHERE round_id = $1")
-        .bind(round_partial.id)
-        .fetch_one(&pool)
+    let round_partial_after = state
+        .game
+        .get_game_state
+        .execute(partial_u1, game_partial.id)
         .await
         .unwrap()
-        .get::<i64, _>(0);
-    assert_eq!(submission_count, 3, "All 3 players should have submissions (2 auto-submitted)");
+        .round
+        .unwrap();
+    assert_eq!(round_partial_after.phase, RoundPhase::Voting);
+
+    let submission_count =
+        sqlx::query("SELECT COUNT(*) FROM round_submissions WHERE round_id = $1")
+            .bind(round_partial.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .get::<i64, _>(0);
+    assert_eq!(
+        submission_count, 3,
+        "All 3 players should have submissions (2 auto-submitted)"
+    );
 
     // Test Case 6: Concurrent Lease Claim Protection
     let lease_u1 = Uuid::new_v4();
@@ -792,15 +1374,66 @@ async fn test_timer_and_concurrency_edge_cases() {
         .await
         .unwrap();
 
-    let game_lease = state.game.create_game.execute(lease_u1, "Lease Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
-    state.game.join_game.execute(lease_u2, game_lease.id, None).await.unwrap();
-    state.game.join_game.execute(lease_u3, game_lease.id, None).await.unwrap();
-    state.game.set_ready.execute(lease_u1, game_lease.id, true).await.unwrap();
-    state.game.set_ready.execute(lease_u2, game_lease.id, true).await.unwrap();
-    state.game.set_ready.execute(lease_u3, game_lease.id, true).await.unwrap();
-    state.game.start_game.execute(lease_u1, game_lease.id).await.unwrap();
+    let game_lease = state
+        .game
+        .create_game
+        .execute(
+            lease_u1,
+            "Lease Game".to_string(),
+            GameMode::SituationToMeme,
+            vec![sit_pack_id],
+            vec![meme_pack_id],
+            1,
+            1,
+            None,
+        )
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(lease_u2, game_lease.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(lease_u3, game_lease.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(lease_u1, game_lease.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(lease_u2, game_lease.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(lease_u3, game_lease.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .start_game
+        .execute(lease_u1, game_lease.id)
+        .await
+        .unwrap();
 
-    let round_lease = state.game.get_game_state.execute(lease_u1, game_lease.id).await.unwrap().round.unwrap();
+    let round_lease = state
+        .game
+        .get_game_state
+        .execute(lease_u1, game_lease.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
 
     sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
         .bind(chrono::Utc::now() - chrono::Duration::seconds(10))
@@ -814,19 +1447,34 @@ async fn test_timer_and_concurrency_edge_cases() {
     let worker_a_lease = Uuid::new_v4();
     let worker_b_lease = Uuid::new_v4();
 
-    let claim_a = repo.claim_next_expired_round(worker_a_lease, now_lease, stale_timeout_lease).await.unwrap();
-    assert!(claim_a.is_some(), "Worker A should successfully claim the round");
+    let claim_a = repo
+        .claim_next_expired_round(worker_a_lease, now_lease, stale_timeout_lease)
+        .await
+        .unwrap();
+    assert!(
+        claim_a.is_some(),
+        "Worker A should successfully claim the round"
+    );
     assert_eq!(claim_a.unwrap().id, round_lease.id);
 
-    let claim_b = repo.claim_next_expired_round(worker_b_lease, now_lease, stale_timeout_lease).await.unwrap();
-    assert!(claim_b.is_none(), "Worker B should fail to claim the round because Worker A holds an active lease");
+    let claim_b = repo
+        .claim_next_expired_round(worker_b_lease, now_lease, stale_timeout_lease)
+        .await
+        .unwrap();
+    assert!(
+        claim_b.is_none(),
+        "Worker B should fail to claim the round because Worker A holds an active lease"
+    );
 
     let round_lease_db = sqlx::query("SELECT claimed_by FROM game_rounds WHERE id = $1")
         .bind(round_lease.id)
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(round_lease_db.get::<Option<Uuid>, _>("claimed_by"), Some(worker_a_lease));
+    assert_eq!(
+        round_lease_db.get::<Option<Uuid>, _>("claimed_by"),
+        Some(worker_a_lease)
+    );
 }
 
 /// Regression test: scores must be credited IMMEDIATELY inside the same transaction
@@ -876,9 +1524,12 @@ async fn test_process_timeout_credits_score_immediately() {
     sqlx::query("INSERT INTO meme_packs (id, author_id, name, language_code) VALUES ($1, $2, 'Timeout Score Memes', 'ru')")
         .bind(meme_pack_id).bind(user_id1).execute(&pool).await.unwrap();
 
-    let base_media_id = chrono::Utc::now().timestamp_millis() * 10000 + (rand::random::<i32>().abs() % 10000) as i64;
+    let base_media_id = chrono::Utc::now().timestamp_millis() * 10000
+        + (rand::random::<i32>().abs() % 10000) as i64;
     let media_ids: Vec<i64> = (0..6).map(|i| base_media_id + i).collect();
-    let file_ids: Vec<String> = (0..6).map(|i| format!("f_ts_{}_{}",  Uuid::new_v4().simple(), i)).collect();
+    let file_ids: Vec<String> = (0..6)
+        .map(|i| format!("f_ts_{}_{}", Uuid::new_v4().simple(), i))
+        .collect();
 
     for (i, (&mid, fid)) in media_ids.iter().zip(file_ids.iter()).enumerate() {
         sqlx::query("INSERT INTO media_assets (id, owner_user_id, provider, provider_file_id, url, filename, content_type, size_bytes, status, visibility) VALUES ($1, $2, 'hackclub_cdn', $3, $4, $5, 'image/png', 10, 'attached', 'public')")
@@ -891,49 +1542,171 @@ async fn test_process_timeout_credits_score_immediately() {
     for (i, &mid) in media_ids.iter().enumerate() {
         let pm_id = Uuid::new_v4();
         sqlx::query("INSERT INTO pack_memes (id, pack_id, media_id) VALUES ($1, $2, $3)")
-            .bind(pm_id).bind(meme_pack_id).bind(mid)
-            .execute(&pool).await.unwrap();
+            .bind(pm_id)
+            .bind(meme_pack_id)
+            .bind(mid)
+            .execute(&pool)
+            .await
+            .unwrap();
         let _ = i; // suppress warning
     }
 
     // Create, join, start game with 1 round
-    let game = state.game.create_game.execute(user_id1, "Timeout Score Game".to_string(), GameMode::SituationToMeme, vec![sit_pack_id], vec![meme_pack_id], 1, 1, None).await.unwrap();
-    state.game.join_game.execute(user_id2, game.id, None).await.unwrap();
-    state.game.join_game.execute(user_id3, game.id, None).await.unwrap();
-    state.game.set_ready.execute(user_id1, game.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id2, game.id, true).await.unwrap();
-    state.game.set_ready.execute(user_id3, game.id, true).await.unwrap();
-    state.game.start_game.execute(user_id1, game.id).await.unwrap();
+    let game = state
+        .game
+        .create_game
+        .execute(
+            user_id1,
+            "Timeout Score Game".to_string(),
+            GameMode::SituationToMeme,
+            vec![sit_pack_id],
+            vec![meme_pack_id],
+            1,
+            1,
+            None,
+        )
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(user_id2, game.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .join_game
+        .execute(user_id3, game.id, None)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(user_id1, game.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(user_id2, game.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .set_ready
+        .execute(user_id3, game.id, true)
+        .await
+        .unwrap();
+    state
+        .game
+        .start_game
+        .execute(user_id1, game.id)
+        .await
+        .unwrap();
 
-    let round = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().round.unwrap();
+    let round = state
+        .game
+        .get_game_state
+        .execute(user_id1, game.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
 
     // All 3 players submit
-    let hand1 = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().my_hand;
-    let card1 = match &hand1[0] { GameCard::Meme { id, .. } | GameCard::Situation { id, .. } => *id };
-    state.game.submit_card.execute(user_id1, game.id, card1).await.unwrap();
+    let hand1 = state
+        .game
+        .get_game_state
+        .execute(user_id1, game.id)
+        .await
+        .unwrap()
+        .my_hand;
+    let card1 = match &hand1[0] {
+        GameCard::Meme { id, .. } | GameCard::Situation { id, .. } => *id,
+    };
+    state
+        .game
+        .submit_card
+        .execute(user_id1, game.id, card1)
+        .await
+        .unwrap();
 
-    let hand2 = state.game.get_game_state.execute(user_id2, game.id).await.unwrap().my_hand;
-    let card2 = match &hand2[0] { GameCard::Meme { id, .. } | GameCard::Situation { id, .. } => *id };
-    state.game.submit_card.execute(user_id2, game.id, card2).await.unwrap();
+    let hand2 = state
+        .game
+        .get_game_state
+        .execute(user_id2, game.id)
+        .await
+        .unwrap()
+        .my_hand;
+    let card2 = match &hand2[0] {
+        GameCard::Meme { id, .. } | GameCard::Situation { id, .. } => *id,
+    };
+    state
+        .game
+        .submit_card
+        .execute(user_id2, game.id, card2)
+        .await
+        .unwrap();
 
-    let hand3 = state.game.get_game_state.execute(user_id3, game.id).await.unwrap().my_hand;
-    let card3 = match &hand3[0] { GameCard::Meme { id, .. } | GameCard::Situation { id, .. } => *id };
-    state.game.submit_card.execute(user_id3, game.id, card3).await.unwrap();
+    let hand3 = state
+        .game
+        .get_game_state
+        .execute(user_id3, game.id)
+        .await
+        .unwrap()
+        .my_hand;
+    let card3 = match &hand3[0] {
+        GameCard::Meme { id, .. } | GameCard::Situation { id, .. } => *id,
+    };
+    state
+        .game
+        .submit_card
+        .execute(user_id3, game.id, card3)
+        .await
+        .unwrap();
 
     // Verify we're in Voting phase
-    let voting_round = state.game.get_game_state.execute(user_id1, game.id).await.unwrap().round.unwrap();
+    let voting_round = state
+        .game
+        .get_game_state
+        .execute(user_id1, game.id)
+        .await
+        .unwrap()
+        .round
+        .unwrap();
     assert_eq!(voting_round.phase, RoundPhase::Voting);
 
     // Cast 2 votes (but NOT all 3, so voting phase doesn't auto-complete via vote_card)
     let submissions = sqlx::query("SELECT id, user_id FROM round_submissions WHERE round_id = $1")
-        .bind(round.id).fetch_all(&pool).await.unwrap();
-    let sub_for_u1 = submissions.iter().find(|s| s.get::<Uuid, _>("user_id") == user_id1).unwrap().get::<Uuid, _>("id");
-    let _sub_for_u2 = submissions.iter().find(|s| s.get::<Uuid, _>("user_id") == user_id2).unwrap().get::<Uuid, _>("id");
+        .bind(round.id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let sub_for_u1 = submissions
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id1)
+        .unwrap()
+        .get::<Uuid, _>("id");
+    let _sub_for_u2 = submissions
+        .iter()
+        .find(|s| s.get::<Uuid, _>("user_id") == user_id2)
+        .unwrap()
+        .get::<Uuid, _>("id");
 
     // user2 votes for user1's submission (1 vote cast so far)
-    state.game.vote_card.execute(user_id2, game.id, sub_for_u1).await.unwrap();
+    state
+        .game
+        .vote_card
+        .execute(user_id2, game.id, sub_for_u1)
+        .await
+        .unwrap();
     // user3 votes for user1's submission (2 votes for user1)
-    state.game.vote_card.execute(user_id3, game.id, sub_for_u1).await.unwrap();
+    state
+        .game
+        .vote_card
+        .execute(user_id3, game.id, sub_for_u1)
+        .await
+        .unwrap();
     // user1 votes for user2's submission (1 vote for user2) — this IS the last vote → auto-completes
     // WAIT: we have 3 players, so 3 votes = all voted → auto-completes in vote_card, not timeout
     // Instead: let's only cast 1 vote and then trigger the timeout to finalize
@@ -942,12 +1715,25 @@ async fn test_process_timeout_credits_score_immediately() {
     // Insert the 2 votes already cast, then trigger timeout process for the voting phase
     // Reset state: delete vote for user1 and user3, keep only user2's vote
     sqlx::query("DELETE FROM round_votes WHERE round_id = $1 AND voter_id = $2")
-        .bind(round.id).bind(user_id3).execute(&pool).await.unwrap();
+        .bind(round.id)
+        .bind(user_id3)
+        .execute(&pool)
+        .await
+        .unwrap();
     sqlx::query("DELETE FROM round_votes WHERE round_id = $1 AND voter_id = $2")
-        .bind(round.id).bind(user_id2).execute(&pool).await.unwrap();
+        .bind(round.id)
+        .bind(user_id2)
+        .execute(&pool)
+        .await
+        .unwrap();
 
     // Cast only 1 vote: user2 → sub_for_u1 (user1 will be winner with 1 vote)
-    state.game.vote_card.execute(user_id2, game.id, sub_for_u1).await.unwrap();
+    state
+        .game
+        .vote_card
+        .execute(user_id2, game.id, sub_for_u1)
+        .await
+        .unwrap();
 
     // Expire the voting phase to trigger timeout
     sqlx::query("UPDATE game_rounds SET phase_expires_at = $1 WHERE id = $2")
@@ -982,17 +1768,25 @@ async fn test_process_timeout_credits_score_immediately() {
         .await
         .unwrap()
         .get::<Option<Uuid>, _>("winner_user_id");
-    assert_eq!(round_winner_id, Some(user_id1), "Winner must be user1 who received the most votes");
+    assert_eq!(
+        round_winner_id,
+        Some(user_id1),
+        "Winner must be user1 who received the most votes"
+    );
 
     // 3. DB: user1's score is 1
-    let winner_score: i32 = sqlx::query("SELECT score FROM game_players WHERE game_id = $1 AND user_id = $2")
-        .bind(game.id)
-        .bind(user_id1)
-        .fetch_one(&pool)
-        .await
-        .unwrap()
-        .get::<i32, _>("score");
-    assert_eq!(winner_score, 1, "Winner user1 must have score = 1 in game_players immediately after process_timeout");
+    let winner_score: i32 =
+        sqlx::query("SELECT score FROM game_players WHERE game_id = $1 AND user_id = $2")
+            .bind(game.id)
+            .bind(user_id1)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .get::<i32, _>("score");
+    assert_eq!(
+        winner_score, 1,
+        "Winner user1 must have score = 1 in game_players immediately after process_timeout"
+    );
 
     // 4. Game finished (1 round game)
     let game_status: String = sqlx::query("SELECT status::text FROM games WHERE id = $1")
@@ -1001,5 +1795,8 @@ async fn test_process_timeout_credits_score_immediately() {
         .await
         .unwrap()
         .get(0);
-    assert_eq!(game_status, "finished", "Game must be finished after process_timeout completes the only round");
+    assert_eq!(
+        game_status, "finished",
+        "Game must be finished after process_timeout completes the only round"
+    );
 }

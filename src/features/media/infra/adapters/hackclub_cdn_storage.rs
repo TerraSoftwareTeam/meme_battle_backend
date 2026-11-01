@@ -85,7 +85,12 @@ impl FileStorage for HackClubCdnStorage {
         // clients (e.g. Ktor on Android) append. reqwest mime_str is strict and rejects them.
         let content_type = {
             let raw = file.content_type.split(';').next().unwrap_or("").trim();
-            if raw.is_empty() { "application/octet-stream" } else { raw }.to_string()
+            if raw.is_empty() {
+                "application/octet-stream"
+            } else {
+                raw
+            }
+            .to_string()
         };
 
         let part = multipart::Part::bytes(file.bytes)

@@ -1,15 +1,12 @@
-use std::sync::Arc;
 use serde_json::json;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
     features::game::{
         application::ports::game_notification_sender::GameNotificationSender,
-        domain::{
-            model::GameStatus,
-            ports::GameRepository,
-        },
+        domain::{model::GameStatus, ports::GameRepository},
     },
 };
 
@@ -19,21 +16,35 @@ pub struct SetReadyCommand {
 }
 
 impl SetReadyCommand {
-    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
-        Self { repo, notification_sender }
+    pub fn new(
+        repo: Arc<dyn GameRepository>,
+        notification_sender: Arc<dyn GameNotificationSender>,
+    ) -> Self {
+        Self {
+            repo,
+            notification_sender,
+        }
     }
 
-    pub async fn execute(&self, user_id: Uuid, game_id: Uuid, is_ready: bool) -> Result<(), AppError> {
+    pub async fn execute(
+        &self,
+        user_id: Uuid,
+        game_id: Uuid,
+        is_ready: bool,
+    ) -> Result<(), AppError> {
         let mut tx = self.repo.begin().await?;
 
         // Row lock game
-        let game = self.repo
+        let game = self
+            .repo
             .find_game_for_update(&mut tx, game_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Game not found: {}", game_id)))?;
 
         if game.status != GameStatus::Lobby {
-            return Err(AppError::Conflict("Cannot change ready status during game".to_string()));
+            return Err(AppError::Conflict(
+                "Cannot change ready status during game".to_string(),
+            ));
         }
 
         // Check if player exists in the game

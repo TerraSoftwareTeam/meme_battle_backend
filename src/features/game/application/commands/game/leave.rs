@@ -5,10 +5,7 @@ use crate::{
     common::http::error::AppError,
     features::game::{
         application::ports::game_notification_sender::GameNotificationSender,
-        domain::{
-            model::GameStatus,
-            ports::GameRepository,
-        },
+        domain::{model::GameStatus, ports::GameRepository},
     },
 };
 
@@ -18,22 +15,31 @@ pub struct LeaveGameCommand {
 }
 
 impl LeaveGameCommand {
-    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
-        Self { repo, notification_sender }
+    pub fn new(
+        repo: Arc<dyn GameRepository>,
+        notification_sender: Arc<dyn GameNotificationSender>,
+    ) -> Self {
+        Self {
+            repo,
+            notification_sender,
+        }
     }
 
     pub async fn execute(&self, user_id: Uuid, game_id: Uuid) -> Result<(), AppError> {
         let mut tx = self.repo.begin().await?;
 
         // 1. Lock Game
-        let game = self.repo
+        let game = self
+            .repo
             .find_game_for_update(&mut tx, game_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Game not found: {}", game_id)))?;
 
         // Can only leave while in Lobby state
         if game.status != GameStatus::Lobby {
-            return Err(AppError::Conflict("Cannot leave an active or finished game".to_string()));
+            return Err(AppError::Conflict(
+                "Cannot leave an active or finished game".to_string(),
+            ));
         }
 
         // 2. Check if player is in game
@@ -56,26 +62,33 @@ impl LeaveGameCommand {
 
             if game.host_id == user_id {
                 // Host left, assign new host to the first remaining player
-                let remaining_players: Vec<_> = players.into_iter().filter(|p| p.user_id != user_id).collect();
+                let remaining_players: Vec<_> = players
+                    .into_iter()
+                    .filter(|p| p.user_id != user_id)
+                    .collect();
                 if let Some(new_host) = remaining_players.first() {
                     let new_host_id = new_host.user_id;
-                    self.repo.update_game_host(&mut tx, game_id, new_host_id).await?;
-                    
-                    self.repo.insert_game_event(
-                        &mut tx,
-                        Uuid::new_v4(),
-                        game_id,
-                        new_version,
-                        "LobbyHostIdChanged",
-                        serde_json::json!({
-                            "new_host_id": new_host_id,
-                        }),
-                    ).await?;
+                    self.repo
+                        .update_game_host(&mut tx, game_id, new_host_id)
+                        .await?;
+
+                    self.repo
+                        .insert_game_event(
+                            &mut tx,
+                            Uuid::new_v4(),
+                            game_id,
+                            new_version,
+                            "LobbyHostIdChanged",
+                            serde_json::json!({
+                                "new_host_id": new_host_id,
+                            }),
+                        )
+                        .await?;
 
                     self.notification_sender
                         .notify_lobby_host_changed(&mut tx, game_id, new_host_id, new_version)
                         .await?;
-                    
+
                     new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
                 }
             }
@@ -95,7 +108,13 @@ impl LeaveGameCommand {
                 .await?;
 
             self.notification_sender
-                .notify_player_left(&mut tx, game_id, user_id, remaining_players_count, new_version)
+                .notify_player_left(
+                    &mut tx,
+                    game_id,
+                    user_id,
+                    remaining_players_count,
+                    new_version,
+                )
                 .await?;
 
             self.notification_sender

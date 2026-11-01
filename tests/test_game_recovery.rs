@@ -213,8 +213,7 @@ async fn subscribe_to_channel(
 }
 
 fn mock_cdn_router() -> axum::Router {
-    axum::Router::new()
-        .route("/api/v4/upload", axum::routing::post(handle_mock_upload))
+    axum::Router::new().route("/api/v4/upload", axum::routing::post(handle_mock_upload))
 }
 
 async fn handle_mock_upload(_bytes: axum::body::Bytes) -> axum::Json<serde_json::Value> {
@@ -262,7 +261,11 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
 
     // Start outbox processor
     let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    state.realtime.processor.clone().start(pool.clone(), shutdown_rx);
+    state
+        .realtime
+        .processor
+        .clone()
+        .start(pool.clone(), shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);
@@ -289,10 +292,13 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
             .unwrap()
             .to_string();
 
-        let claims: Claims =
-            decode::<Claims>(&token, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &jsonwebtoken::Validation::default())
-                .unwrap()
-                .claims;
+        let claims: Claims = decode::<Claims>(
+            &token,
+            &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret),
+            &jsonwebtoken::Validation::default(),
+        )
+        .unwrap()
+        .claims;
         user_ids.push(Uuid::parse_str(&claims.sub).unwrap());
         tokens.push(token);
     }
@@ -434,10 +440,11 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
         .data
         .unwrap();
 
-    let mut ws_client1 = match connect_ws_client(centrifugo_ws_url, &ws_tokens1, user_ids[0], 100).await {
-        Some(c) => c,
-        None => return,
-    };
+    let mut ws_client1 =
+        match connect_ws_client(centrifugo_ws_url, &ws_tokens1, user_ids[0], 100).await {
+            Some(c) => c,
+            None => return,
+        };
     subscribe_to_channel(
         &mut ws_client1,
         &game_channel,
@@ -461,10 +468,11 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
         .data
         .unwrap();
 
-    let mut ws_client2 = match connect_ws_client(centrifugo_ws_url, &ws_tokens2, user_ids[1], 200).await {
-        Some(c) => c,
-        None => return,
-    };
+    let mut ws_client2 =
+        match connect_ws_client(centrifugo_ws_url, &ws_tokens2, user_ids[1], 200).await {
+            Some(c) => c,
+            None => return,
+        };
     let sub_resp2 = subscribe_to_channel(
         &mut ws_client2,
         &game_channel,
@@ -548,10 +556,11 @@ async fn test_centrifugo_websocket_replication_and_recovery() {
 
     // ── 9. Simulate Reconnection & Recovery ──────────────────────────────────
     // Player 2 reconnects
-    let mut ws_client2_reconnected = match connect_ws_client(centrifugo_ws_url, &ws_tokens2, user_ids[1], 300).await {
-        Some(c) => c,
-        None => return,
-    };
+    let mut ws_client2_reconnected =
+        match connect_ws_client(centrifugo_ws_url, &ws_tokens2, user_ids[1], 300).await {
+            Some(c) => c,
+            None => return,
+        };
 
     // Send subscribe request with "recover": true, and the last seen offset/epoch
     let sub_id = 301u64;

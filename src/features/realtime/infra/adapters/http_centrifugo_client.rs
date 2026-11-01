@@ -1,8 +1,8 @@
+use crate::common::{app::config::Config, http::error::AppError};
+use crate::features::realtime::domain::ports::realtime_publisher::RealtimePublisher;
 use async_trait::async_trait;
 use serde_json::json;
 use std::time::Duration;
-use crate::common::{app::config::Config, http::error::AppError};
-use crate::features::realtime::domain::ports::realtime_publisher::RealtimePublisher;
 
 pub struct HttpCentrifugoClient {
     config: Config,
@@ -15,10 +15,7 @@ impl HttpCentrifugoClient {
             .timeout(Duration::from_secs(3))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
-        Self {
-            config,
-            client,
-        }
+        Self { config, client }
     }
 }
 
@@ -33,9 +30,13 @@ impl RealtimePublisher for HttpCentrifugoClient {
             }
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.config.centrifugo_api_url)
-            .header("Authorization", format!("apikey {}", self.config.centrifugo_api_key))
+            .header(
+                "Authorization",
+                format!("apikey {}", self.config.centrifugo_api_key),
+            )
             .json(&body)
             .send()
             .await;

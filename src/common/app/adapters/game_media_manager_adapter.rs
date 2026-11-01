@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use async_trait::async_trait;
+use std::sync::Arc;
 
 use crate::{
     common::http::error::AppError,
     features::{
-        media::{GetMediaAssetUrlQuery, MediaRepository},
         game::GameMediaManager,
+        media::{GetMediaAssetUrlQuery, MediaRepository},
     },
 };
 
@@ -35,5 +35,11 @@ impl GameMediaManager for GameMediaManagerAdapter {
 
     async fn validate_media_exists(&self, media_ids: &[i64]) -> Result<(), AppError> {
         self.media_repository.validate_exists(media_ids).await
+    }
+
+    async fn enqueue_purge_for_media_ids(&self, media_ids: &[i64]) -> Result<(), AppError> {
+        self.media_repository
+            .enqueue_purge_tasks_for_media_ids(media_ids)
+            .await
     }
 }

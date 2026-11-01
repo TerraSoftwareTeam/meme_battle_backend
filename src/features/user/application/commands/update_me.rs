@@ -14,10 +14,7 @@ pub struct UpdateMeCommand {
 }
 
 impl UpdateMeCommand {
-    pub fn new(
-        repo: Arc<dyn UserRepository>,
-        user_auth_service: Arc<dyn UserAuthService>,
-    ) -> Self {
+    pub fn new(repo: Arc<dyn UserRepository>, user_auth_service: Arc<dyn UserAuthService>) -> Self {
         Self {
             repo,
             user_auth_service,
@@ -46,7 +43,12 @@ impl UpdateMeCommand {
 
         let user = if let Some(username) = username {
             self.repo
-                .update_profile(&user_id, UpdateUserProfile { username: Some(username) })
+                .update_profile(
+                    &user_id,
+                    UpdateUserProfile {
+                        username: Some(username),
+                    },
+                )
                 .await?
                 .ok_or_else(|| AppError::NotFound("User not found".into()))?
         } else {

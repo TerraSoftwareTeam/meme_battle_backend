@@ -35,6 +35,7 @@ pub struct MemePack {
     pub is_public: bool,
     pub is_official: bool,
     pub created_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize, utoipa::ToSchema)]
@@ -43,7 +44,7 @@ pub struct PackMeme {
     pub pack_id: Uuid,
     pub media_id: Option<i64>,
     pub content_hash: Option<String>,
-    pub is_active: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize, utoipa::ToSchema)]
@@ -65,6 +66,7 @@ pub struct SituationPack {
     pub is_public: bool,
     pub is_official: bool,
     pub created_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow, Serialize, Deserialize, utoipa::ToSchema)]
@@ -73,7 +75,7 @@ pub struct PackSituation {
     pub pack_id: Uuid,
     pub prompt_text: String,
     pub content_hash: Option<String>,
-    pub is_active: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,6 +91,5 @@ pub struct PackMemeReconcileState {
     pub id: Uuid,
     pub media_id: Option<i64>,
     pub content_hash: Option<String>,
-    pub is_active: bool,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
-

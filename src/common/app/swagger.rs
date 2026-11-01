@@ -3,9 +3,9 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::features::{
     auth::UserAuthApiDoc,
+    game::GameApiDoc,
     media::MediaApiDoc,
     user::{UserAdminApiDoc, UserApiDoc},
-    game::GameApiDoc,
 };
 
 pub fn create_swagger_ui() -> SwaggerUi {
@@ -20,9 +20,8 @@ pub fn create_swagger_ui() -> SwaggerUi {
 }
 
 pub fn create_admin_swagger_ui() -> SwaggerUi {
-    SwaggerUi::new("/admin/docs")
-        .url(
-            "/api-docs/user_admin/openapi.json",
-            UserAdminApiDoc::openapi(),
-        )
+    SwaggerUi::new("/admin/docs").url(
+        "/api-docs/user_admin/openapi.json",
+        UserAdminApiDoc::openapi(),
+    )
 }

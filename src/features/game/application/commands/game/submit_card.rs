@@ -18,8 +18,14 @@ pub struct SubmitCardCommand {
 }
 
 impl SubmitCardCommand {
-    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
-        Self { repo, notification_sender }
+    pub fn new(
+        repo: Arc<dyn GameRepository>,
+        notification_sender: Arc<dyn GameNotificationSender>,
+    ) -> Self {
+        Self {
+            repo,
+            notification_sender,
+        }
     }
 
     pub async fn execute(
@@ -28,16 +34,17 @@ impl SubmitCardCommand {
         game_id: Uuid,
         card_id: Uuid,
     ) -> Result<(), AppError> {
-        let current_round = self.repo
-            .get_current_round(game_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("No active round found for this game".to_string()))?;
+        let current_round =
+            self.repo.get_current_round(game_id).await?.ok_or_else(|| {
+                AppError::NotFound("No active round found for this game".to_string())
+            })?;
         let round_id = current_round.id;
 
         let mut tx = self.repo.begin().await?;
 
         // 1. Lock Game
-        let game = self.repo
+        let game = self
+            .repo
             .find_game_for_update(&mut tx, game_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Game not found: {}", game_id)))?;
@@ -47,20 +54,26 @@ impl SubmitCardCommand {
         }
 
         // 2. Lock Round
-        let round = self.repo
+        let round = self
+            .repo
             .get_round_for_update(&mut tx, round_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Round not found: {}", round_id)))?;
 
         if round.phase != RoundPhase::Submitting {
-            return Err(AppError::Conflict("Round is not in submitting phase".to_string()));
+            return Err(AppError::Conflict(
+                "Round is not in submitting phase".to_string(),
+            ));
         }
 
         // 3. Find card in hand
-        let hand_card = self.repo
+        let hand_card = self
+            .repo
             .check_player_hand_card(&mut tx, game_id, user_id, card_id)
             .await?
-            .ok_or_else(|| AppError::ValidationError("Card not in hand or already used".to_string()))?;
+            .ok_or_else(|| {
+                AppError::ValidationError("Card not in hand or already used".to_string())
+            })?;
 
         // 4. Validate Mode Compatibility
         match game.mode {
@@ -82,7 +95,13 @@ impl SubmitCardCommand {
 
         // 5. Submit card
         self.repo
-            .insert_submission(&mut tx, round_id, user_id, hand_card.meme_id, hand_card.situation_id)
+            .insert_submission(
+                &mut tx,
+                round_id,
+                user_id,
+                hand_card.meme_id,
+                hand_card.situation_id,
+            )
             .await?;
 
         // 6. Mark hand card used
@@ -95,7 +114,8 @@ impl SubmitCardCommand {
         let mut round_phase_changed = false;
         let mut next_expires_at = None;
         if submissions_count >= players.len() as i64 {
-            let expires_at = chrono::Utc::now() + chrono::Duration::seconds(game.vote_time_limit as i64);
+            let expires_at =
+                chrono::Utc::now() + chrono::Duration::seconds(game.vote_time_limit as i64);
             self.repo
                 .update_round_phase(&mut tx, round_id, RoundPhase::Voting, Some(expires_at))
                 .await?;
@@ -165,4 +185,3 @@ impl SubmitCardCommand {
         Ok(())
     }
 }
-

@@ -1,6 +1,9 @@
-use sqlx::{postgres::{PgPoolOptions, PgConnectOptions}, PgPool, ConnectOptions};
-use std::str::FromStr;
+use sqlx::{
+    postgres::{PgConnectOptions, PgPoolOptions},
+    ConnectOptions, PgPool,
+};
 use std::env;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::time::sleep;
@@ -26,7 +29,7 @@ pub struct Config {
 
     pub centrifugo_api_url: String,
     pub centrifugo_api_key: String,
-    
+
     pub cors_allowed_origin: String,
 
     pub max_file_size_mb: u32,
@@ -75,8 +78,9 @@ impl Config {
             centrifugo_api_key: env::var("CENTRIFUGO_API_KEY")
                 .unwrap_or_else(|_| "CHANGE_ME_API_KEY".to_string()),
 
-            cors_allowed_origin: env::var("CORS_ALLOWED_ORIGIN")
-                .unwrap_or_else(|_| "https://meme.skyfly.hackclub.app,https://new.meme.skyfly.hackclub.app".to_string()),
+            cors_allowed_origin: env::var("CORS_ALLOWED_ORIGIN").unwrap_or_else(|_| {
+                "https://meme.skyfly.hackclub.app,https://new.meme.skyfly.hackclub.app".to_string()
+            }),
 
             max_file_size_mb: optional_u32_env("MAX_FILE_SIZE_MB", 35),
         };

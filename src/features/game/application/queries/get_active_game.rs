@@ -3,10 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
-    features::game::domain::{
-        model::GameStatus,
-        ports::GameRepository,
-    },
+    features::game::domain::{model::GameStatus, ports::GameRepository},
 };
 
 pub struct ActiveGameInfo {

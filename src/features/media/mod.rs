@@ -9,7 +9,10 @@ pub use application::commands::{
 };
 pub use application::queries::get_media_asset_url::GetMediaAssetUrlQuery;
 pub use domain::{
-    model::{MediaAsset, MediaProvider, MediaStatus, MediaVisibility, StoredFile, UploadFile},
+    model::{
+        MediaAsset, MediaProvider, MediaPurgeTask, MediaStatus, MediaVisibility, StoredFile,
+        UploadFile,
+    },
     ports::{
         file_storage::FileStorage,
         media_repository::{CreateMediaAsset, MediaRepository},
@@ -18,3 +21,4 @@ pub use domain::{
 pub use infra::adapters::{
     hackclub_cdn_storage::HackClubCdnStorage, postgres_media_repository::PostgresMediaRepository,
 };
+pub use infra::cleanup_worker::MediaCleanupWorker;

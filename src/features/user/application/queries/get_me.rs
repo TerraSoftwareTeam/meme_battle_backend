@@ -11,10 +11,7 @@ pub struct GetMeQuery {
 }
 
 impl GetMeQuery {
-    pub fn new(
-        repo: Arc<dyn UserRepository>,
-        user_auth_service: Arc<dyn UserAuthService>,
-    ) -> Self {
+    pub fn new(repo: Arc<dyn UserRepository>, user_auth_service: Arc<dyn UserAuthService>) -> Self {
         Self {
             repo,
             user_auth_service,

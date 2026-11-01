@@ -3,24 +3,21 @@ use std::time::Instant;
 
 use sqlx::{migrate::MigrateError, PgPool};
 
-use crate::common::{
-    app::{
-        config::Config,
-        state::{AppState, AuthState, MediaState, UserState, RealtimeState},
-    },
+use crate::common::app::{
+    config::Config,
+    state::{AppState, AuthState, MediaState, RealtimeState, UserState},
 };
 use crate::features::auth::{
-    AuthAsGuestCommand, AuthRepository, AuthRepositoryImpl, ChangePasswordCommand, LoginUserCommand,
-    RefreshSessionCommand, RegisterUserCommand, UserExistsQuery,
+    AuthAsGuestCommand, AuthRepository, AuthRepositoryImpl, ChangePasswordCommand,
+    LoginUserCommand, RefreshSessionCommand, RegisterUserCommand, UserExistsQuery,
 };
 use crate::features::media::{
     FileStorage, GetMediaAssetUrlQuery, HackClubCdnStorage, MarkMediaAttachedCommand,
     MediaRepository, PostgresMediaRepository, UploadMediaCommand,
 };
 use crate::features::user::{
-    GetMeQuery, GetUserByIdQuery, GetUserListQuery, GetUsersQuery,
-    PromoteToAdminCommand, UpdateMeCommand,
-    UserRepository, UserRepositoryImpl,
+    GetMeQuery, GetUserByIdQuery, GetUserListQuery, GetUsersQuery, PromoteToAdminCommand,
+    UpdateMeCommand, UserRepository, UserRepositoryImpl,
 };
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -77,18 +74,21 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         config.hackclub_cdn_api_key.clone(),
     ));
     let upload_media = Arc::new(UploadMediaCommand::new(
-        media_storage,
+        media_storage.clone(),
         media_repository.clone(),
     ));
     let get_media_asset_url = Arc::new(GetMediaAssetUrlQuery::new(media_repository.clone()));
     let mark_media_attached = Arc::new(MarkMediaAttachedCommand::new(media_repository.clone()));
+    let media_cleanup_worker = Arc::new(crate::features::media::MediaCleanupWorker::new(
+        media_repository.clone(),
+        media_storage,
+    ));
     // Cross-feature adapter for User -> Auth
-    let user_auth_service: Arc<dyn crate::features::user::UserAuthService> = Arc::new(
-        crate::common::app::adapters::UserAuthServiceAdapter::new(
+    let user_auth_service: Arc<dyn crate::features::user::UserAuthService> =
+        Arc::new(crate::common::app::adapters::UserAuthServiceAdapter::new(
             change_password.clone(),
             auth_repository.clone(),
-        )
-    );
+        ));
 
     // User
     let user_repository: Arc<dyn UserRepository> = Arc::new(UserRepositoryImpl::new(pool.clone()));
@@ -129,6 +129,7 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
         upload_media,
         get_media_asset_url.clone(),
         mark_media_attached.clone(),
+        media_cleanup_worker,
         max_file_size_bytes,
     );
     let user_state = UserState::new(
@@ -142,72 +143,150 @@ pub fn build_app_state(pool: PgPool, config: Config) -> AppState {
     );
 
     // Realtime Feature Bootstrapping
-    let outbox_repository = Arc::new(crate::features::realtime::PostgresOutboxRepository::new(pool.clone()));
-    let realtime_publisher = Arc::new(crate::features::realtime::HttpCentrifugoClient::new(config.clone()));
+    let outbox_repository = Arc::new(crate::features::realtime::PostgresOutboxRepository::new(
+        pool.clone(),
+    ));
+    let realtime_publisher = Arc::new(crate::features::realtime::HttpCentrifugoClient::new(
+        config.clone(),
+    ));
 
-    let publish_usecase = Arc::new(crate::features::realtime::PublishNotificationCommand::new(outbox_repository.clone()));
+    let publish_usecase = Arc::new(crate::features::realtime::PublishNotificationCommand::new(
+        outbox_repository.clone(),
+    ));
     let token_usecase = Arc::new(crate::features::realtime::GenerateTokenCommand::new());
 
-    let outbox_processor = Arc::new(crate::features::realtime::OutboxProcessor::new(outbox_repository, realtime_publisher));
+    let outbox_processor = Arc::new(crate::features::realtime::OutboxProcessor::new(
+        outbox_repository,
+        realtime_publisher,
+    ));
 
     // Global Adapters wiring Game feature to Realtime feature
-    let notification_sender: Arc<dyn crate::features::game::GameNotificationSender> =
-        Arc::new(crate::common::app::adapters::GameNotificationSenderAdapter::new(
+    let notification_sender: Arc<dyn crate::features::game::GameNotificationSender> = Arc::new(
+        crate::common::app::adapters::GameNotificationSenderAdapter::new(
             publish_usecase,
             get_media_asset_url.clone(),
-        ));
+        ),
+    );
     let token_generator: Arc<dyn crate::features::game::GameTokenGenerator> =
         Arc::new(crate::common::app::adapters::GameTokenGeneratorAdapter::new(token_usecase));
 
-    let realtime_state = RealtimeState::new(
-        outbox_processor,
-    );
+    let realtime_state = RealtimeState::new(outbox_processor);
 
     // Game
     let game_repository: Arc<dyn crate::features::game::GameRepository> =
         Arc::new(crate::features::game::GameRepositoryImpl::new(pool.clone()));
-    let game_media_manager = Arc::new(crate::common::app::adapters::game_media_manager_adapter::GameMediaManagerAdapter::new(
-        get_media_asset_url.clone(),
-        media_repository.clone(),
-    ));
+    let game_media_manager = Arc::new(
+        crate::common::app::adapters::game_media_manager_adapter::GameMediaManagerAdapter::new(
+            get_media_asset_url.clone(),
+            media_repository.clone(),
+        ),
+    );
 
-    let create_game = Arc::new(crate::features::game::CreateGameCommand::new(game_repository.clone(), notification_sender.clone()));
-    let join_game = Arc::new(crate::features::game::JoinGameCommand::new(game_repository.clone(), notification_sender.clone()));
-    let set_ready = Arc::new(crate::features::game::SetReadyCommand::new(game_repository.clone(), notification_sender.clone()));
-    let start_game = Arc::new(crate::features::game::StartGameCommand::new(game_repository.clone(), notification_sender.clone()));
-    let update_game = Arc::new(crate::features::game::UpdateGameCommand::new(game_repository.clone(), notification_sender.clone()));
-    let submit_card = Arc::new(crate::features::game::SubmitCardCommand::new(game_repository.clone(), notification_sender.clone()));
-    let vote_card = Arc::new(crate::features::game::VoteCardCommand::new(game_repository.clone(), notification_sender.clone()));
-    let leave_game = Arc::new(crate::features::game::LeaveGameCommand::new(game_repository.clone(), notification_sender.clone()));
-    let get_game_state = Arc::new(crate::features::game::GetGameStateQuery::new(game_repository.clone(), game_media_manager.clone()));
-    let get_active_game = Arc::new(crate::features::game::GetActiveGameQuery::new(game_repository.clone()));
+    let create_game = Arc::new(crate::features::game::CreateGameCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let join_game = Arc::new(crate::features::game::JoinGameCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let set_ready = Arc::new(crate::features::game::SetReadyCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let start_game = Arc::new(crate::features::game::StartGameCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let update_game = Arc::new(crate::features::game::UpdateGameCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let submit_card = Arc::new(crate::features::game::SubmitCardCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let vote_card = Arc::new(crate::features::game::VoteCardCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let leave_game = Arc::new(crate::features::game::LeaveGameCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let get_game_state = Arc::new(crate::features::game::GetGameStateQuery::new(
+        game_repository.clone(),
+        game_media_manager.clone(),
+    ));
+    let get_active_game = Arc::new(crate::features::game::GetActiveGameQuery::new(
+        game_repository.clone(),
+    ));
     let create_meme_pack = Arc::new(crate::features::game::CreateMemePackCommand::new(
         game_repository.clone(),
         mark_media_attached.clone(),
         game_media_manager.clone(),
     ));
-    let update_meme_pack = Arc::new(crate::features::game::UpdateMemePackCommand::new(game_repository.clone()));
-    let delete_meme_pack = Arc::new(crate::features::game::DeleteMemePackCommand::new(game_repository.clone()));
+    let update_meme_pack = Arc::new(crate::features::game::UpdateMemePackCommand::new(
+        game_repository.clone(),
+    ));
+    let delete_meme_pack = Arc::new(crate::features::game::DeleteMemePackCommand::new(
+        game_repository.clone(),
+        game_media_manager.clone(),
+        notification_sender.clone(),
+    ));
     let add_memes_to_pack = Arc::new(crate::features::game::AddMemesToPackCommand::new(
         game_repository.clone(),
         mark_media_attached.clone(),
         game_media_manager.clone(),
     ));
-    let delete_pack_meme = Arc::new(crate::features::game::DeletePackMemeCommand::new(game_repository.clone()));
-    let create_situation_pack = Arc::new(crate::features::game::CreateSituationPackCommand::new(game_repository.clone()));
-    let update_situation_pack = Arc::new(crate::features::game::UpdateSituationPackCommand::new(game_repository.clone()));
-    let delete_situation_pack = Arc::new(crate::features::game::DeleteSituationPackCommand::new(game_repository.clone()));
-    let add_situations_to_pack = Arc::new(crate::features::game::AddSituationsToPackCommand::new(game_repository.clone()));
-    let delete_pack_situation = Arc::new(crate::features::game::DeletePackSituationCommand::new(game_repository.clone()));
+    let delete_pack_meme = Arc::new(crate::features::game::DeletePackMemeCommand::new(
+        game_repository.clone(),
+        game_media_manager.clone(),
+    ));
+    let create_situation_pack = Arc::new(crate::features::game::CreateSituationPackCommand::new(
+        game_repository.clone(),
+    ));
+    let update_situation_pack = Arc::new(crate::features::game::UpdateSituationPackCommand::new(
+        game_repository.clone(),
+    ));
+    let delete_situation_pack = Arc::new(crate::features::game::DeleteSituationPackCommand::new(
+        game_repository.clone(),
+        notification_sender.clone(),
+    ));
+    let add_situations_to_pack = Arc::new(crate::features::game::AddSituationsToPackCommand::new(
+        game_repository.clone(),
+    ));
+    let delete_pack_situation = Arc::new(crate::features::game::DeletePackSituationCommand::new(
+        game_repository.clone(),
+    ));
 
-    let list_meme_packs = Arc::new(crate::features::game::ListMemePacksQuery::new(game_repository.clone()));
-    let list_user_meme_packs = Arc::new(crate::features::game::ListUserMemePacksQuery::new(game_repository.clone(), game_media_manager.clone()));
-    let get_meme_pack = Arc::new(crate::features::game::GetMemePackQuery::new(game_repository.clone(), game_media_manager.clone()));
-    let list_situation_packs = Arc::new(crate::features::game::ListSituationPacksQuery::new(game_repository.clone()));
-    let list_user_situation_packs = Arc::new(crate::features::game::ListUserSituationPacksQuery::new(game_repository.clone()));
-    let get_situation_pack = Arc::new(crate::features::game::GetSituationPackQuery::new(game_repository.clone()));
-    let get_ws_token = Arc::new(crate::features::game::GetWsTokenQuery::new(game_repository.clone(), token_generator.clone()));
-    let list_active_games = Arc::new(crate::features::game::ListActiveGamesQuery::new(game_repository.clone()));
+    let list_meme_packs = Arc::new(crate::features::game::ListMemePacksQuery::new(
+        game_repository.clone(),
+    ));
+    let list_user_meme_packs = Arc::new(crate::features::game::ListUserMemePacksQuery::new(
+        game_repository.clone(),
+        game_media_manager.clone(),
+    ));
+    let get_meme_pack = Arc::new(crate::features::game::GetMemePackQuery::new(
+        game_repository.clone(),
+        game_media_manager.clone(),
+    ));
+    let list_situation_packs = Arc::new(crate::features::game::ListSituationPacksQuery::new(
+        game_repository.clone(),
+    ));
+    let list_user_situation_packs = Arc::new(
+        crate::features::game::ListUserSituationPacksQuery::new(game_repository.clone()),
+    );
+    let get_situation_pack = Arc::new(crate::features::game::GetSituationPackQuery::new(
+        game_repository.clone(),
+    ));
+    let get_ws_token = Arc::new(crate::features::game::GetWsTokenQuery::new(
+        game_repository.clone(),
+        token_generator.clone(),
+    ));
+    let list_active_games = Arc::new(crate::features::game::ListActiveGamesQuery::new(
+        game_repository.clone(),
+    ));
 
     let process_timeout = Arc::new(crate::features::game::ProcessTimeoutCommand::new(
         game_repository.clone(),

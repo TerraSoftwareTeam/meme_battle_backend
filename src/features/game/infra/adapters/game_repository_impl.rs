@@ -1,8 +1,7 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-
 
 use crate::{
     common::http::error::AppError,
@@ -275,10 +274,7 @@ impl GameRepository for GameRepositoryImpl {
             .await?
             .flatten();
 
-            return Ok(Some(RawGameCard::Meme {
-                id: m_id,
-                media_id,
-            }));
+            return Ok(Some(RawGameCard::Meme { id: m_id, media_id }));
         }
         Ok(None)
     }
@@ -289,7 +285,7 @@ impl GameRepository for GameRepositoryImpl {
             SELECT pm.id
             FROM pack_memes pm
             JOIN game_selected_meme_packs gsmp ON pm.pack_id = gsmp.pack_id
-            WHERE gsmp.game_id = $1 AND pm.is_active = true
+            WHERE gsmp.game_id = $1 AND pm.deleted_at IS NULL
             "#,
         )
         .bind(game_id)
@@ -305,7 +301,7 @@ impl GameRepository for GameRepositoryImpl {
             SELECT ps.id
             FROM pack_situations ps
             JOIN game_selected_situation_packs gssp ON ps.pack_id = gssp.pack_id
-            WHERE gssp.game_id = $1 AND ps.is_active = true
+            WHERE gssp.game_id = $1 AND ps.deleted_at IS NULL
             "#,
         )
         .bind(game_id)
@@ -392,7 +388,7 @@ impl GameRepository for GameRepositoryImpl {
             r#"
             SELECT COUNT(*)
             FROM pack_memes
-            WHERE pack_id = ANY($1) AND is_active = true
+            WHERE pack_id = ANY($1) AND deleted_at IS NULL
             "#,
         )
         .bind(pack_ids)
@@ -410,7 +406,7 @@ impl GameRepository for GameRepositoryImpl {
             r#"
             SELECT COUNT(*)
             FROM pack_situations
-            WHERE pack_id = ANY($1) AND is_active = true
+            WHERE pack_id = ANY($1) AND deleted_at IS NULL
             "#,
         )
         .bind(pack_ids)
@@ -557,10 +553,14 @@ impl GameRepository for GameRepositoryImpl {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
     ) -> Result<(), AppError> {
-        sqlx::query("DELETE FROM games WHERE id = $1").bind(game_id).execute(&mut **tx).await.map_err(|e| {
-            tracing::error!("Failed to delete game: {}", e);
-            AppError::InternalError
-        })?;
+        sqlx::query("DELETE FROM games WHERE id = $1")
+            .bind(game_id)
+            .execute(&mut **tx)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to delete game: {}", e);
+                AppError::InternalError
+            })?;
         Ok(())
     }
 
@@ -627,12 +627,11 @@ impl GameRepository for GameRepositoryImpl {
 
     async fn get_user_username(&self, user_id: Uuid) -> Result<Option<String>, AppError> {
         // The username may be NULL for guest users. Use a scalar query that returns Option<String>.
-        let username = sqlx::query_scalar::<_, Option<String>>(
-            "SELECT username FROM users WHERE id = $1",
-        )
-        .bind(user_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let username =
+            sqlx::query_scalar::<_, Option<String>>("SELECT username FROM users WHERE id = $1")
+                .bind(user_id)
+                .fetch_one(&self.pool)
+                .await?;
         Ok(username)
     }
 
@@ -1172,11 +1171,12 @@ impl GameRepository for GameRepositoryImpl {
                 Err(AppError::NotFound("Meme prompt not found".to_string()))
             }
         } else {
-            Err(AppError::ValidationError(format!("Invalid prompt kind: {}", prompt_kind)))
+            Err(AppError::ValidationError(format!(
+                "Invalid prompt kind: {}",
+                prompt_kind
+            )))
         }
     }
-
-
 
     async fn insert_game_event(
         &self,
@@ -1241,8 +1241,6 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
-
-
     async fn insert_meme_pack(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -1306,9 +1304,9 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_meme_pack(&self, pack_id: Uuid) -> Result<Option<MemePack>, AppError> {
         let pack = sqlx::query_as::<_, MemePack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at, deleted_at
             FROM meme_packs
-            WHERE id = $1
+            WHERE id = $1 AND deleted_at IS NULL
             "#,
         )
         .bind(pack_id)
@@ -1321,9 +1319,9 @@ impl GameRepository for GameRepositoryImpl {
     async fn list_meme_packs(&self, author_id: Uuid) -> Result<Vec<MemePack>, AppError> {
         let packs = sqlx::query_as::<_, MemePack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at, deleted_at
             FROM meme_packs
-            WHERE is_public = true OR author_id = $1
+            WHERE (is_public = true OR author_id = $1) AND deleted_at IS NULL
             ORDER BY created_at DESC
             "#,
         )
@@ -1337,9 +1335,9 @@ impl GameRepository for GameRepositoryImpl {
     async fn list_user_meme_packs(&self, author_id: Uuid) -> Result<Vec<MemePack>, AppError> {
         let packs = sqlx::query_as::<_, MemePack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at, deleted_at
             FROM meme_packs
-            WHERE author_id = $1
+            WHERE author_id = $1 AND deleted_at IS NULL
             ORDER BY created_at DESC
             "#,
         )
@@ -1353,9 +1351,9 @@ impl GameRepository for GameRepositoryImpl {
     async fn get_pack_memes_list(&self, pack_id: Uuid) -> Result<Vec<PackMeme>, AppError> {
         let memes = sqlx::query_as::<_, PackMeme>(
             r#"
-            SELECT id, pack_id, media_id, content_hash, is_active
+            SELECT id, pack_id, media_id, content_hash, deleted_at
             FROM pack_memes
-            WHERE pack_id = $1 AND is_active = true
+            WHERE pack_id = $1 AND deleted_at IS NULL
             ORDER BY id ASC
             "#,
         )
@@ -1395,11 +1393,27 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
-    async fn delete_meme_pack(&self, tx: &mut Transaction<'_, Postgres>, pack_id: Uuid) -> Result<(), AppError> {
+    async fn delete_meme_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"
-            DELETE FROM meme_packs
+            UPDATE meme_packs
+            SET deleted_at = now()
             WHERE id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE pack_memes
+            SET deleted_at = now()
+            WHERE pack_id = $1 AND deleted_at IS NULL
             "#,
         )
         .bind(pack_id)
@@ -1412,7 +1426,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_pack_meme_by_id(&self, meme_id: Uuid) -> Result<Option<PackMeme>, AppError> {
         let meme = sqlx::query_as::<_, PackMeme>(
             r#"
-            SELECT id, pack_id, media_id, content_hash, is_active
+            SELECT id, pack_id, media_id, content_hash, deleted_at
             FROM pack_memes
             WHERE id = $1
             "#,
@@ -1424,10 +1438,15 @@ impl GameRepository for GameRepositoryImpl {
         Ok(meme)
     }
 
-    async fn delete_pack_meme(&self, tx: &mut Transaction<'_, Postgres>, meme_id: Uuid) -> Result<(), AppError> {
+    async fn delete_pack_meme(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        meme_id: Uuid,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"
-            DELETE FROM pack_memes
+            UPDATE pack_memes
+            SET deleted_at = now()
             WHERE id = $1
             "#,
         )
@@ -1436,6 +1455,60 @@ impl GameRepository for GameRepositoryImpl {
         .await?;
 
         Ok(())
+    }
+
+    async fn get_pack_media_ids(&self, pack_id: Uuid) -> Result<Vec<i64>, AppError> {
+        let ids = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT media_id
+            FROM pack_memes
+            WHERE pack_id = $1 AND media_id IS NOT NULL
+            "#,
+        )
+        .bind(pack_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(ids)
+    }
+
+    async fn remove_pack_from_unstarted_lobbies(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+        is_meme: bool,
+    ) -> Result<Vec<Uuid>, AppError> {
+        let affected_games = if is_meme {
+            sqlx::query_scalar::<_, Uuid>(
+                r#"
+                DELETE FROM game_selected_meme_packs gsmp
+                USING games g
+                WHERE gsmp.game_id = g.id
+                  AND gsmp.pack_id = $1
+                  AND g.status = 'lobby'
+                RETURNING gsmp.game_id
+                "#,
+            )
+            .bind(pack_id)
+            .fetch_all(&mut **tx)
+            .await?
+        } else {
+            sqlx::query_scalar::<_, Uuid>(
+                r#"
+                DELETE FROM game_selected_situation_packs gssp
+                USING games g
+                WHERE gssp.game_id = g.id
+                  AND gssp.pack_id = $1
+                  AND g.status = 'lobby'
+                RETURNING gssp.game_id
+                "#,
+            )
+            .bind(pack_id)
+            .fetch_all(&mut **tx)
+            .await?
+        };
+
+        Ok(affected_games)
     }
 
     // Situation packs
@@ -1503,9 +1576,9 @@ impl GameRepository for GameRepositoryImpl {
     async fn find_situation_pack(&self, pack_id: Uuid) -> Result<Option<SituationPack>, AppError> {
         let pack = sqlx::query_as::<_, SituationPack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at, deleted_at
             FROM situation_packs
-            WHERE id = $1
+            WHERE id = $1 AND deleted_at IS NULL
             "#,
         )
         .bind(pack_id)
@@ -1518,9 +1591,9 @@ impl GameRepository for GameRepositoryImpl {
     async fn list_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError> {
         let packs = sqlx::query_as::<_, SituationPack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at, deleted_at
             FROM situation_packs
-            WHERE is_public = true OR author_id = $1
+            WHERE (is_public = true OR author_id = $1) AND deleted_at IS NULL
             ORDER BY created_at DESC
             "#,
         )
@@ -1531,12 +1604,15 @@ impl GameRepository for GameRepositoryImpl {
         Ok(packs)
     }
 
-    async fn list_user_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError> {
+    async fn list_user_situation_packs(
+        &self,
+        author_id: Uuid,
+    ) -> Result<Vec<SituationPack>, AppError> {
         let packs = sqlx::query_as::<_, SituationPack>(
             r#"
-            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at
+            SELECT id, author_id, name, description, language_code, safety_level, is_public, is_official, created_at, deleted_at
             FROM situation_packs
-            WHERE author_id = $1
+            WHERE author_id = $1 AND deleted_at IS NULL
             ORDER BY created_at DESC
             "#,
         )
@@ -1547,12 +1623,15 @@ impl GameRepository for GameRepositoryImpl {
         Ok(packs)
     }
 
-    async fn get_pack_situations_list(&self, pack_id: Uuid) -> Result<Vec<PackSituation>, AppError> {
+    async fn get_pack_situations_list(
+        &self,
+        pack_id: Uuid,
+    ) -> Result<Vec<PackSituation>, AppError> {
         let situations = sqlx::query_as::<_, PackSituation>(
             r#"
-            SELECT id, pack_id, prompt_text, content_hash, is_active
+            SELECT id, pack_id, prompt_text, content_hash, deleted_at
             FROM pack_situations
-            WHERE pack_id = $1 AND is_active = true
+            WHERE pack_id = $1 AND deleted_at IS NULL
             ORDER BY id ASC
             "#,
         )
@@ -1592,11 +1671,27 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
-    async fn delete_situation_pack(&self, tx: &mut Transaction<'_, Postgres>, pack_id: Uuid) -> Result<(), AppError> {
+    async fn delete_situation_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"
-            DELETE FROM situation_packs
+            UPDATE situation_packs
+            SET deleted_at = now()
             WHERE id = $1
+            "#,
+        )
+        .bind(pack_id)
+        .execute(&mut **tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            UPDATE pack_situations
+            SET deleted_at = now()
+            WHERE pack_id = $1 AND deleted_at IS NULL
             "#,
         )
         .bind(pack_id)
@@ -1606,10 +1701,13 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
-    async fn find_pack_situation_by_id(&self, situation_id: Uuid) -> Result<Option<PackSituation>, AppError> {
+    async fn find_pack_situation_by_id(
+        &self,
+        situation_id: Uuid,
+    ) -> Result<Option<PackSituation>, AppError> {
         let sit = sqlx::query_as::<_, PackSituation>(
             r#"
-            SELECT id, pack_id, prompt_text, content_hash, is_active
+            SELECT id, pack_id, prompt_text, content_hash, deleted_at
             FROM pack_situations
             WHERE id = $1
             "#,
@@ -1621,10 +1719,15 @@ impl GameRepository for GameRepositoryImpl {
         Ok(sit)
     }
 
-    async fn delete_pack_situation(&self, tx: &mut Transaction<'_, Postgres>, situation_id: Uuid) -> Result<(), AppError> {
+    async fn delete_pack_situation(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        situation_id: Uuid,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"
-            DELETE FROM pack_situations
+            UPDATE pack_situations
+            SET deleted_at = now()
             WHERE id = $1
             "#,
         )
@@ -1634,8 +1737,6 @@ impl GameRepository for GameRepositoryImpl {
 
         Ok(())
     }
-
-
 
     async fn start_game(
         &self,
@@ -1864,7 +1965,7 @@ impl GameRepository for GameRepositoryImpl {
                 JOIN pack_memes pm ON pm.id = gcl.meme_id
                 WHERE pm.pack_id = $1
             )
-            "#
+            "#,
         )
         .bind(pack_id)
         .fetch_one(&self.pool)
@@ -1881,7 +1982,7 @@ impl GameRepository for GameRepositoryImpl {
                 JOIN pack_situations ps ON ps.id = gcl.situation_id
                 WHERE ps.pack_id = $1
             )
-            "#
+            "#,
         )
         .bind(pack_id)
         .fetch_one(&self.pool)
@@ -1896,7 +1997,7 @@ impl GameRepository for GameRepositoryImpl {
             SELECT EXISTS (
                 SELECT 1 FROM game_content_locks WHERE meme_id = $1
             )
-            "#
+            "#,
         )
         .bind(meme_id)
         .fetch_one(&self.pool)
@@ -1911,7 +2012,7 @@ impl GameRepository for GameRepositoryImpl {
             SELECT EXISTS (
                 SELECT 1 FROM game_content_locks WHERE situation_id = $1
             )
-            "#
+            "#,
         )
         .bind(situation_id)
         .fetch_one(&self.pool)
@@ -1975,12 +2076,11 @@ impl GameRepository for GameRepositoryImpl {
     }
 
     async fn ensure_admin_user(&self, admin_id: Uuid, username: &str) -> Result<(), AppError> {
-        let exists = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)"
-        )
-        .bind(admin_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let exists =
+            sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)")
+                .bind(admin_id)
+                .fetch_one(&self.pool)
+                .await?;
 
         if !exists {
             sqlx::query(
@@ -2045,12 +2145,12 @@ impl GameRepository for GameRepositoryImpl {
             id: Uuid,
             prompt_text: String,
             content_hash: Option<String>,
-            is_active: bool,
+            deleted_at: Option<DateTime<Utc>>,
         }
 
         let existing_rows = sqlx::query_as::<_, ExistingSituationRow>(
             r#"
-            SELECT id, prompt_text, content_hash, is_active
+            SELECT id, prompt_text, content_hash, deleted_at
             FROM pack_situations
             WHERE pack_id = $1
             "#,
@@ -2077,11 +2177,11 @@ impl GameRepository for GameRepositoryImpl {
             }
 
             if let Some(existing) = existing_by_hash.get(hash) {
-                if !existing.is_active {
+                if existing.deleted_at.is_some() {
                     sqlx::query(
                         r#"
                         UPDATE pack_situations
-                        SET is_active = true, prompt_text = $1
+                        SET deleted_at = NULL, prompt_text = $1
                         WHERE id = $2
                         "#,
                     )
@@ -2097,7 +2197,7 @@ impl GameRepository for GameRepositoryImpl {
                 sqlx::query(
                     r#"
                     UPDATE pack_situations
-                    SET content_hash = $1, is_active = true
+                    SET content_hash = $1, deleted_at = NULL
                     WHERE id = $2
                     "#,
                 )
@@ -2109,10 +2209,10 @@ impl GameRepository for GameRepositoryImpl {
             } else {
                 sqlx::query(
                     r#"
-                    INSERT INTO pack_situations (pack_id, prompt_text, content_hash, is_active)
-                    VALUES ($1, $2, $3, true)
+                    INSERT INTO pack_situations (pack_id, prompt_text, content_hash)
+                    VALUES ($1, $2, $3)
                     ON CONFLICT (pack_id, prompt_text)
-                    DO UPDATE SET content_hash = EXCLUDED.content_hash, is_active = true
+                    DO UPDATE SET content_hash = EXCLUDED.content_hash, deleted_at = NULL
                     "#,
                 )
                 .bind(pack_id)
@@ -2125,7 +2225,7 @@ impl GameRepository for GameRepositoryImpl {
         }
 
         for row in &existing_rows {
-            if row.is_active {
+            if row.deleted_at.is_none() {
                 let is_still_desired = match &row.content_hash {
                     Some(hash) => desired_hashes.contains(hash),
                     None => false,
@@ -2135,7 +2235,7 @@ impl GameRepository for GameRepositoryImpl {
                     sqlx::query(
                         r#"
                         UPDATE pack_situations
-                        SET is_active = false
+                        SET deleted_at = now()
                         WHERE id = $1
                         "#,
                     )
@@ -2192,7 +2292,7 @@ impl GameRepository for GameRepositoryImpl {
     ) -> Result<Vec<PackMemeReconcileState>, AppError> {
         let rows = sqlx::query_as::<_, PackMemeReconcileState>(
             r#"
-            SELECT id, media_id, content_hash, is_active
+            SELECT id, media_id, content_hash, deleted_at
             FROM pack_memes
             WHERE pack_id = $1
             "#,
@@ -2208,7 +2308,7 @@ impl GameRepository for GameRepositoryImpl {
         sqlx::query(
             r#"
             UPDATE pack_memes
-            SET is_active = true
+            SET deleted_at = NULL
             WHERE id = $1
             "#,
         )
@@ -2227,10 +2327,10 @@ impl GameRepository for GameRepositoryImpl {
     ) -> Result<(), AppError> {
         sqlx::query(
             r#"
-            INSERT INTO pack_memes (pack_id, media_id, content_hash, is_active)
-            VALUES ($1, $2, $3, true)
+            INSERT INTO pack_memes (pack_id, media_id, content_hash)
+            VALUES ($1, $2, $3)
             ON CONFLICT (pack_id, media_id)
-            DO UPDATE SET content_hash = EXCLUDED.content_hash, is_active = true
+            DO UPDATE SET content_hash = EXCLUDED.content_hash, deleted_at = NULL
             "#,
         )
         .bind(pack_id)
@@ -2254,7 +2354,7 @@ impl GameRepository for GameRepositoryImpl {
         let mut deactivated_count = 0;
 
         for row in existing {
-            if row.is_active {
+            if row.deleted_at.is_none() {
                 let is_desired = match &row.content_hash {
                     Some(hash) => desired_set.contains(hash.as_str()),
                     None => false,
@@ -2264,7 +2364,7 @@ impl GameRepository for GameRepositoryImpl {
                     sqlx::query(
                         r#"
                         UPDATE pack_memes
-                        SET is_active = false
+                        SET deleted_at = now()
                         WHERE id = $1
                         "#,
                     )
@@ -2327,5 +2427,3 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 }
-
-

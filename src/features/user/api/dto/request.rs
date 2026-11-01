@@ -21,7 +21,11 @@ impl From<SearchUserDto> for SearchUser {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct UpdateMeDto {
-    #[validate(length(min = 1, max = 64, message = "Username must be between 1 and 64 characters"))]
+    #[validate(length(
+        min = 1,
+        max = 64,
+        message = "Username must be between 1 and 64 characters"
+    ))]
     pub username: Option<String>,
     #[validate(length(min = 1, max = 128, message = "Password cannot be empty"))]
     pub password: Option<String>,

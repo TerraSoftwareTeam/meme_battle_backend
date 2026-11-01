@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    common::http::error::AppError,
-    features::auth::domain::ports::auth_repository::AuthRepository,
+    common::http::error::AppError, features::auth::domain::ports::auth_repository::AuthRepository,
 };
 
 pub struct UserExistsQuery {

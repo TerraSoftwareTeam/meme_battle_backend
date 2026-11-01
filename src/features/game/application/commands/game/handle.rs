@@ -1,8 +1,5 @@
+use crate::{common::http::error::AppError, features::game::domain::model::game::GamePlayer};
 use uuid::Uuid;
-use crate::{
-    common::http::error::AppError,
-    features::game::domain::model::game::GamePlayer,
-};
 
 pub fn resolve_handle(
     user_id: Uuid,
@@ -18,7 +15,9 @@ pub fn resolve_handle(
     let conflict = existing_players.iter().any(|p| p.handle == proposed_handle);
     if conflict {
         if is_explicit {
-            return Err(AppError::Conflict("handle already taken in this lobby".to_string()));
+            return Err(AppError::Conflict(
+                "handle already taken in this lobby".to_string(),
+            ));
         } else {
             return Ok(user_id.to_string());
         }
@@ -46,9 +45,7 @@ mod tests {
     #[test]
     fn test_resolve_handle_explicit_success() {
         let user_id = Uuid::new_v4();
-        let existing = vec![
-            make_mock_player(Uuid::new_v4(), "Alice"),
-        ];
+        let existing = vec![make_mock_player(Uuid::new_v4(), "Alice")];
 
         let result = resolve_handle(
             user_id,
@@ -64,9 +61,7 @@ mod tests {
     #[test]
     fn test_resolve_handle_explicit_conflict() {
         let user_id = Uuid::new_v4();
-        let existing = vec![
-            make_mock_player(Uuid::new_v4(), "Alice"),
-        ];
+        let existing = vec![make_mock_player(Uuid::new_v4(), "Alice")];
 
         let result = resolve_handle(
             user_id,
@@ -85,16 +80,9 @@ mod tests {
     #[test]
     fn test_resolve_handle_default_no_conflict() {
         let user_id = Uuid::new_v4();
-        let existing = vec![
-            make_mock_player(Uuid::new_v4(), "Alice"),
-        ];
+        let existing = vec![make_mock_player(Uuid::new_v4(), "Alice")];
 
-        let result = resolve_handle(
-            user_id,
-            None,
-            "Bob".to_string(),
-            &existing,
-        );
+        let result = resolve_handle(user_id, None, "Bob".to_string(), &existing);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Bob");
@@ -103,16 +91,9 @@ mod tests {
     #[test]
     fn test_resolve_handle_default_conflict_fallback_to_uuid() {
         let user_id = Uuid::new_v4();
-        let existing = vec![
-            make_mock_player(Uuid::new_v4(), "Alice"),
-        ];
+        let existing = vec![make_mock_player(Uuid::new_v4(), "Alice")];
 
-        let result = resolve_handle(
-            user_id,
-            None,
-            "Alice".to_string(),
-            &existing,
-        );
+        let result = resolve_handle(user_id, None, "Alice".to_string(), &existing);
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), user_id.to_string());
@@ -129,18 +110,15 @@ mod tests {
             Some("Bob".to_string()),
             "Alice".to_string(),
             &existing_empty,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(handle_a, "Bob");
 
         let player_a = make_mock_player(user_a_id, &handle_a);
         let existing_with_a = vec![player_a];
 
-        let handle_b = resolve_handle(
-            user_b_id,
-            None,
-            "Bob".to_string(),
-            &existing_with_a,
-        ).unwrap();
+        let handle_b =
+            resolve_handle(user_b_id, None, "Bob".to_string(), &existing_with_a).unwrap();
 
         assert_eq!(handle_b, user_b_id.to_string());
     }

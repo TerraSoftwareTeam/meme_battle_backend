@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use serde_json::json;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -35,8 +35,14 @@ pub struct VoteCardCommand {
 }
 
 impl VoteCardCommand {
-    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
-        Self { repo, notification_sender }
+    pub fn new(
+        repo: Arc<dyn GameRepository>,
+        notification_sender: Arc<dyn GameNotificationSender>,
+    ) -> Self {
+        Self {
+            repo,
+            notification_sender,
+        }
     }
 
     pub async fn execute(
@@ -45,10 +51,10 @@ impl VoteCardCommand {
         game_id: Uuid,
         submission_id: Uuid,
     ) -> Result<(), AppError> {
-        let current_round = self.repo
-            .get_current_round(game_id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("No active round found for this game".to_string()))?;
+        let current_round =
+            self.repo.get_current_round(game_id).await?.ok_or_else(|| {
+                AppError::NotFound("No active round found for this game".to_string())
+            })?;
         let round_id = current_round.id;
 
         // ── Phase 1: Load & validate (outside transaction for cheaper reads) ──
@@ -139,7 +145,10 @@ impl VoteCardCommand {
         // Collect all events produced in this command invocation
         let mut events: Vec<GameEvent> = Vec::new();
 
-        let card_id = submission.submission_meme_id.or(submission.submission_situation_id).unwrap();
+        let card_id = submission
+            .submission_meme_id
+            .or(submission.submission_situation_id)
+            .unwrap();
 
         // VoteRegistered is always emitted
         events.push(GameEvent::VoteRegistered {
@@ -152,22 +161,26 @@ impl VoteCardCommand {
         if votes_count >= players.len() as i64 {
             // Determine the winner by highest vote count (stable tiebreak: first found)
             let tally = self.repo.get_votes_by_submission(&mut tx, round_id).await?;
-            let winner_user_id = if let Some((winning_sub_id, _)) =
-                tally.into_iter().max_by_key(|&(_, c)| c)
-            {
-                let winning_sub = self
-                    .repo
-                    .get_submission_by_id(winning_sub_id)
-                    .await?
-                    .ok_or(AppError::InternalError)?;
-                Some(winning_sub.user_id)
-            } else {
-                None
-            };
+            let winner_user_id =
+                if let Some((winning_sub_id, _)) = tally.into_iter().max_by_key(|&(_, c)| c) {
+                    let winning_sub = self
+                        .repo
+                        .get_submission_by_id(winning_sub_id)
+                        .await?
+                        .ok_or(AppError::InternalError)?;
+                    Some(winning_sub.user_id)
+                } else {
+                    None
+                };
 
             // Update game_rounds read-model
             self.repo
-                .update_round_winner_and_phase(&mut tx, round_id, winner_user_id, RoundPhase::Finished)
+                .update_round_winner_and_phase(
+                    &mut tx,
+                    round_id,
+                    winner_user_id,
+                    RoundPhase::Finished,
+                )
                 .await?;
 
             // Award point to winner
@@ -235,9 +248,15 @@ impl VoteCardCommand {
                     final_scores: final_scores.clone(),
                 }]);
             } else {
-                let expires_at = chrono::Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64);
+                let expires_at =
+                    chrono::Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64);
                 self.repo
-                    .activate_next_round(&mut tx, game_id, aggregate.current_round, Some(expires_at))
+                    .activate_next_round(
+                        &mut tx,
+                        game_id,
+                        aggregate.current_round,
+                        Some(expires_at),
+                    )
                     .await?;
             }
         } else {
@@ -266,13 +285,24 @@ impl VoteCardCommand {
 
             // 2. Map to centrifugo realtime envelope and insert into outbox
             match event {
-                GameEvent::LobbyHostIdChanged { .. } => {},
-                GameEvent::VoteRegistered { round_id, voter_id, card_id } => {
+                GameEvent::LobbyHostIdChanged { .. } => {}
+                GameEvent::VoteRegistered {
+                    round_id,
+                    voter_id,
+                    card_id,
+                } => {
                     self.notification_sender
-                        .notify_vote_received(&mut tx, game_id, *round_id, *voter_id, *card_id, slot)
+                        .notify_vote_received(
+                            &mut tx, game_id, *round_id, *voter_id, *card_id, slot,
+                        )
                         .await?;
                 }
-                GameEvent::RoundFinished { round_id, winner_user_id, scores, round_scores } => {
+                GameEvent::RoundFinished {
+                    round_id,
+                    winner_user_id,
+                    scores,
+                    round_scores,
+                } => {
                     self.notification_sender
                         .notify_round_finished(
                             &mut tx,
@@ -288,9 +318,19 @@ impl VoteCardCommand {
 
                     // Also send hand updated events for each player
                     for player in &players {
-                        let cards = self.repo.get_player_hand_with_media(&mut tx, game_id, player.user_id).await?;
+                        let cards = self
+                            .repo
+                            .get_player_hand_with_media(&mut tx, game_id, player.user_id)
+                            .await?;
                         self.notification_sender
-                            .notify_hand_updated(&mut tx, game_id, player.user_id, *round_id, cards, slot)
+                            .notify_hand_updated(
+                                &mut tx,
+                                game_id,
+                                player.user_id,
+                                *round_id,
+                                cards,
+                                slot,
+                            )
                             .await?;
                     }
 
@@ -313,7 +353,8 @@ impl VoteCardCommand {
                         } else {
                             "meme".to_string()
                         };
-                        let prompt_id = next_round.prompt_situation_id
+                        let prompt_id = next_round
+                            .prompt_situation_id
                             .or(next_round.prompt_meme_id)
                             .unwrap();
                         let (prompt_media_id, prompt_text) = self
@@ -321,7 +362,10 @@ impl VoteCardCommand {
                             .get_prompt_details(&mut tx, &prompt_kind, prompt_id)
                             .await?;
 
-                        let next_expires_at = next_round.phase_expires_at.unwrap_or_else(|| chrono::Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64));
+                        let next_expires_at = next_round.phase_expires_at.unwrap_or_else(|| {
+                            chrono::Utc::now()
+                                + chrono::Duration::seconds(game.submit_time_limit as i64)
+                        });
                         self.notification_sender
                             .notify_round_started(
                                 &mut tx,
@@ -346,7 +390,13 @@ impl VoteCardCommand {
                         .unwrap_or(Uuid::nil());
 
                     self.notification_sender
-                        .notify_game_finished(&mut tx, game_id, winner_user_id, final_scores.clone(), slot)
+                        .notify_game_finished(
+                            &mut tx,
+                            game_id,
+                            winner_user_id,
+                            final_scores.clone(),
+                            slot,
+                        )
                         .await?;
                 }
             }
@@ -371,7 +421,11 @@ fn event_payload(event: &GameEvent) -> serde_json::Value {
         GameEvent::LobbyHostIdChanged { new_host_id } => json!({
             "new_host_id": new_host_id
         }),
-        GameEvent::VoteRegistered { round_id, voter_id, card_id } => json!({
+        GameEvent::VoteRegistered {
+            round_id,
+            voter_id,
+            card_id,
+        } => json!({
             "round_id": round_id,
             "voter_id": voter_id,
             "card_id": card_id,
@@ -406,4 +460,3 @@ fn event_payload(event: &GameEvent) -> serde_json::Value {
         }
     }
 }
-

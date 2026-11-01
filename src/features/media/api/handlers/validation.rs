@@ -1,7 +1,4 @@
-use crate::{
-    common::http::error::AppError,
-    features::media::UploadFile,
-};
+use crate::{common::http::error::AppError, features::media::UploadFile};
 use axum::extract::Multipart;
 
 pub async fn extract_file(

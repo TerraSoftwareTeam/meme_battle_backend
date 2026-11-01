@@ -361,6 +361,23 @@ All event notifications sent by the server are wrapped in a Centrifugo `push` co
 }
 ```
 
+### LobbyPacksUpdated (`lobby_packs_updated`)
+* **Channel**: `game:{game_id}`
+* **Trigger**: The set of selected packs in the lobby has changed (either the host updated lobby settings via `PATCH /games/{id}`, or the author of a selected pack deleted it, causing it to be automatically deselected from unstarted lobbies).
+* **Payload**:
+```json
+{
+  "selected_meme_pack_ids": [
+    "86cb4d95-8e3f-494a-a478-f04fdca78927"
+  ],
+  "selected_situation_pack_ids": [
+    "37c9ee49-8c20-4e1d-a291-9a23b2c87f89"
+  ]
+}
+```
+
+> **Client Handling**: Upon receiving this event, the client UI inside the lobby screen should update the selected packs list in real-time without requiring a page reload or polling.
+
 ---
 
 ## 6. Message Recovery on Reconnection

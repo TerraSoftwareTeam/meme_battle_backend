@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use sqlx::{Postgres, Transaction};
-use uuid::Uuid;
 use crate::common::http::error::AppError;
 use crate::features::realtime::domain::{
+    model::{RealtimeEnvelope, RealtimePayload},
     ports::OutboxRepository,
-    model::{RealtimePayload, RealtimeEnvelope},
 };
+use sqlx::{Postgres, Transaction};
+use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct PublishNotificationCommand {
     repo: Arc<dyn OutboxRepository>,
@@ -30,6 +30,8 @@ impl PublishNotificationCommand {
             None => RealtimeEnvelope::all(game_id, version, payload),
         };
         let val = serde_json::to_value(&event).map_err(|_| AppError::InternalError)?;
-        self.repo.queue_event(tx, event.event_id, game_id, channel, val).await
+        self.repo
+            .queue_event(tx, event.event_id, game_id, channel, val)
+            .await
     }
 }

@@ -1,7 +1,7 @@
+use sqlx::{postgres::PgListener, PgPool};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info};
-use sqlx::{PgPool, postgres::PgListener};
 
 use crate::common::http::error::AppError;
 use crate::features::realtime::domain::ports::{OutboxRepository, RealtimePublisher};
@@ -17,7 +17,11 @@ impl OutboxProcessor {
     }
 
     /// Start the background worker loop that handles database notifications and periodic retries
-    pub fn start(self: Arc<Self>, pool: PgPool, mut shutdown_rx: tokio::sync::watch::Receiver<bool>) -> tokio::task::JoinHandle<()> {
+    pub fn start(
+        self: Arc<Self>,
+        pool: PgPool,
+        mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> tokio::task::JoinHandle<()> {
         info!("Starting unified realtime outbox processor with PostgreSQL LISTEN/NOTIFY");
         tokio::spawn(async move {
             let mut retry_ticker = tokio::time::interval(Duration::from_secs(5));
@@ -89,10 +93,15 @@ impl OutboxProcessor {
         match PgListener::connect_with(pool).await {
             Ok(mut l) => {
                 if let Err(err) = l.listen("realtime_outbox_inserted").await {
-                    error!("Failed to listen to channel 'realtime_outbox_inserted': {:?}", err);
+                    error!(
+                        "Failed to listen to channel 'realtime_outbox_inserted': {:?}",
+                        err
+                    );
                     None
                 } else {
-                    info!("Successfully listening to 'realtime_outbox_inserted' notification channel");
+                    info!(
+                        "Successfully listening to 'realtime_outbox_inserted' notification channel"
+                    );
                     Some(l)
                 }
             }
@@ -110,7 +119,10 @@ impl OutboxProcessor {
             return Ok(());
         }
 
-        debug!("Publishing {} pending realtime outbox events sequentially", rows.len());
+        debug!(
+            "Publishing {} pending realtime outbox events sequentially",
+            rows.len()
+        );
 
         let mut successes = Vec::new();
         let mut failures = Vec::new();
@@ -124,7 +136,10 @@ impl OutboxProcessor {
                     successes.push(row.event_id);
                 }
                 Err(err) => {
-                    error!("Failed to publish event id={} to Centrifugo: {:?}", row.event_id, err);
+                    error!(
+                        "Failed to publish event id={} to Centrifugo: {:?}",
+                        row.event_id, err
+                    );
                     let (next_retry, next_retry_at) = self.calculate_next_retry(row.retry_count);
                     failures.push((row.event_id, next_retry, next_retry_at));
                 }
@@ -132,7 +147,9 @@ impl OutboxProcessor {
         }
 
         // 3. Update database status based on publishing results in a single short transaction
-        self.repo.update_processed_results(&successes, &failures).await?;
+        self.repo
+            .update_processed_results(&successes, &failures)
+            .await?;
 
         Ok(())
     }
@@ -168,7 +185,9 @@ impl OutboxProcessor {
         }
 
         // 3. Delete/Update state directly on database in a single short transaction
-        self.repo.update_processed_results(&successes, &failures).await?;
+        self.repo
+            .update_processed_results(&successes, &failures)
+            .await?;
 
         Ok(())
     }

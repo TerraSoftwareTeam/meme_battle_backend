@@ -1,5 +1,7 @@
 use crate::common::http::error::AppError;
-use crate::features::auth::api::dto::request::{AuthUserDto, RefreshSessionDto, RegisterAuthUserDto};
+use crate::features::auth::api::dto::request::{
+    AuthUserDto, RefreshSessionDto, RegisterAuthUserDto,
+};
 use validator::Validate;
 
 pub fn validate_register_auth_user(payload: &RegisterAuthUserDto) -> Result<(), AppError> {

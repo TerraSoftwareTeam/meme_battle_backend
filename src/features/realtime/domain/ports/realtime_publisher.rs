@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use crate::common::http::error::AppError;
+use async_trait::async_trait;
 
 #[async_trait]
 pub trait RealtimePublisher: Send + Sync {

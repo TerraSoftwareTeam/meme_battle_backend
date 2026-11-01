@@ -1,21 +1,21 @@
 pub mod create;
+pub mod handle;
 pub mod join;
 pub mod leave;
+pub mod process_timeout;
 pub mod set_ready;
 pub mod start;
 pub mod submit_card;
-pub mod vote_card;
 pub mod update;
-pub mod process_timeout;
-pub mod handle;
+pub mod vote_card;
 
 pub use create::CreateGameCommand;
+pub use handle::resolve_handle;
 pub use join::JoinGameCommand;
 pub use leave::LeaveGameCommand;
+pub use process_timeout::ProcessTimeoutCommand;
 pub use set_ready::SetReadyCommand;
 pub use start::StartGameCommand;
 pub use submit_card::SubmitCardCommand;
-pub use vote_card::VoteCardCommand;
 pub use update::UpdateGameCommand;
-pub use process_timeout::ProcessTimeoutCommand;
-pub use handle::resolve_handle;
+pub use vote_card::VoteCardCommand;

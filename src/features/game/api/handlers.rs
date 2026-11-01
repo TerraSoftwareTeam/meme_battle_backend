@@ -13,13 +13,14 @@ use crate::{
     },
     features::game::{
         api::dto::{
-            CreateGameRequest, UpdateGameRequest, ReadyRequest, SubmitCardRequest, VoteRequest, GameDto,
-            JoinGameRequest,
-            ActiveGameDto, ActiveGamesResponseDto, ActiveGameInfoDto, GameStateDto, PlayerDto, RoundDto, RoundSubmissionDto, CreateMemePackRequest, CreateMemePackResponse,
-            UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
-            MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
-            UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
-            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, LobbiesWsTokenDto,
+            ActiveGameDto, ActiveGameInfoDto, ActiveGamesResponseDto, AddMemesToPackRequest,
+            AddSituationsToPackRequest, CreateGameRequest, CreateMemePackRequest,
+            CreateMemePackResponse, CreateSituationPackRequest, CreateSituationPackResponse,
+            GameDto, GameStateDto, JoinGameRequest, LobbiesWsTokenDto, MemePackDetailsResponse,
+            MemePackDto, PackMemeDetailsDto, PackSituationDto, PlayerDto, ReadyRequest, RoundDto,
+            RoundSubmissionDto, SituationPackDetailsResponse, SituationPackDto, SubmitCardRequest,
+            UpdateGameRequest, UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest,
+            WsTokenDto,
         },
         GameState,
     },
@@ -67,7 +68,8 @@ pub async fn list_active_games(
     State(state): State<GameState>,
 ) -> Result<impl IntoResponse, AppError> {
     let result = state.list_active_games.execute().await?;
-    let games_dtos: Vec<ActiveGameDto> = result.games.into_iter().map(ActiveGameDto::from).collect();
+    let games_dtos: Vec<ActiveGameDto> =
+        result.games.into_iter().map(ActiveGameDto::from).collect();
 
     Ok(RestApiResponse::success(ActiveGamesResponseDto {
         games: games_dtos,
@@ -88,7 +90,9 @@ pub async fn get_lobbies_ws_token(
         .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
 
     let connection_token = state.token_generator.generate_connection_token(user_id)?;
-    let lobbies_subscription_token = state.token_generator.generate_lobbies_subscription_token(user_id)?;
+    let lobbies_subscription_token = state
+        .token_generator
+        .generate_lobbies_subscription_token(user_id)?;
 
     Ok(RestApiResponse::success(LobbiesWsTokenDto {
         connection_token,
@@ -249,9 +253,16 @@ pub async fn join_game(
         req.handle
     };
 
-    state.game.join_game.execute(user_id, id, requested_handle).await?;
+    state
+        .game
+        .join_game
+        .execute(user_id, id, requested_handle)
+        .await?;
 
-    Ok(RestApiResponse::success_with_message("Joined successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Joined successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -272,7 +283,10 @@ pub async fn leave_game(
 
     state.game.leave_game.execute(user_id, id).await?;
 
-    Ok(RestApiResponse::success_with_message("Left game successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Left game successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -289,10 +303,17 @@ pub async fn leave_current_game(
         .map_err(|_| AppError::ValidationError("Invalid current user ID".to_string()))?;
 
     if let Some(active) = state.game.get_active_game.execute(user_id).await? {
-        state.game.leave_game.execute(user_id, active.game_id).await?;
+        state
+            .game
+            .leave_game
+            .execute(user_id, active.game_id)
+            .await?;
     }
 
-    Ok(RestApiResponse::success_with_message("Left game successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Left game successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -313,9 +334,16 @@ pub async fn set_ready(
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid game ID".to_string()))?;
 
-    state.game.set_ready.execute(user_id, id, payload.is_ready).await?;
+    state
+        .game
+        .set_ready
+        .execute(user_id, id, payload.is_ready)
+        .await?;
 
-    Ok(RestApiResponse::success_with_message("Readiness updated".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Readiness updated".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -336,7 +364,10 @@ pub async fn start_game_session(
 
     state.game.start_game.execute(user_id, id).await?;
 
-    Ok(RestApiResponse::success_with_message("Game started successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Game started successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -363,7 +394,10 @@ pub async fn submit_card(
         .execute(user_id, id, payload.card_id)
         .await?;
 
-    Ok(RestApiResponse::success_with_message("Card submitted successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Card submitted successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -390,7 +424,10 @@ pub async fn vote_card(
         .execute(user_id, id, payload.submission_id)
         .await?;
 
-    Ok(RestApiResponse::success_with_message("Vote registered successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Vote registered successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -424,7 +461,9 @@ pub async fn create_meme_pack(
         )
         .await?;
 
-    Ok(RestApiResponse::success(CreateMemePackResponse { id: pack_id }))
+    Ok(RestApiResponse::success(CreateMemePackResponse {
+        id: pack_id,
+    }))
 }
 
 #[utoipa::path(
@@ -472,7 +511,11 @@ pub async fn get_meme_pack(
 
     let details = MemePackDetailsResponse {
         pack: MemePackDto::from(res.pack),
-        memes: res.memes.into_iter().map(PackMemeDetailsDto::from).collect(),
+        memes: res
+            .memes
+            .into_iter()
+            .map(PackMemeDetailsDto::from)
+            .collect(),
     };
 
     Ok(RestApiResponse::success(details))
@@ -512,7 +555,10 @@ pub async fn update_meme_pack(
         )
         .await?;
 
-    Ok(RestApiResponse::success_with_message("Meme pack updated successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Meme pack updated successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -536,7 +582,10 @@ pub async fn delete_meme_pack(
 
     state.delete_meme_pack.execute(user_id, id).await?;
 
-    Ok(RestApiResponse::success_with_message("Meme pack deleted successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Meme pack deleted successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -560,9 +609,15 @@ pub async fn add_memes_to_pack(
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid pack ID".to_string()))?;
 
-    state.add_memes_to_pack.execute(user_id, id, payload.media_ids).await?;
+    state
+        .add_memes_to_pack
+        .execute(user_id, id, payload.media_ids)
+        .await?;
 
-    Ok(RestApiResponse::success_with_message("Memes added to pack successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Memes added to pack successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -586,7 +641,10 @@ pub async fn delete_pack_meme(
 
     state.delete_pack_meme.execute(user_id, meme_id).await?;
 
-    Ok(RestApiResponse::success_with_message("Meme removed from pack successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Meme removed from pack successfully".to_string(),
+        (),
+    ))
 }
 
 // Situation Packs
@@ -621,7 +679,9 @@ pub async fn create_situation_pack(
         )
         .await?;
 
-    Ok(RestApiResponse::success(CreateSituationPackResponse { id: pack_id }))
+    Ok(RestApiResponse::success(CreateSituationPackResponse {
+        id: pack_id,
+    }))
 }
 
 #[utoipa::path(
@@ -669,7 +729,11 @@ pub async fn get_situation_pack(
 
     let details = SituationPackDetailsResponse {
         pack: SituationPackDto::from(res.pack),
-        situations: res.situations.into_iter().map(PackSituationDto::from).collect(),
+        situations: res
+            .situations
+            .into_iter()
+            .map(PackSituationDto::from)
+            .collect(),
     };
 
     Ok(RestApiResponse::success(details))
@@ -709,7 +773,10 @@ pub async fn update_situation_pack(
         )
         .await?;
 
-    Ok(RestApiResponse::success_with_message("Situation pack updated successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Situation pack updated successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -733,7 +800,10 @@ pub async fn delete_situation_pack(
 
     state.delete_situation_pack.execute(user_id, id).await?;
 
-    Ok(RestApiResponse::success_with_message("Situation pack deleted successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Situation pack deleted successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -757,9 +827,15 @@ pub async fn add_situations_to_pack(
     let id = Uuid::parse_str(&id_str)
         .map_err(|_| AppError::ValidationError("Invalid pack ID".to_string()))?;
 
-    state.add_situations_to_pack.execute(user_id, id, payload.prompts).await?;
+    state
+        .add_situations_to_pack
+        .execute(user_id, id, payload.prompts)
+        .await?;
 
-    Ok(RestApiResponse::success_with_message("Situations added to pack successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Situations added to pack successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -781,9 +857,15 @@ pub async fn delete_pack_situation(
     let situation_id = Uuid::parse_str(&situation_id_str)
         .map_err(|_| AppError::ValidationError("Invalid situation ID".to_string()))?;
 
-    state.delete_pack_situation.execute(user_id, situation_id).await?;
+    state
+        .delete_pack_situation
+        .execute(user_id, situation_id)
+        .await?;
 
-    Ok(RestApiResponse::success_with_message("Situation removed from pack successfully".to_string(), ()))
+    Ok(RestApiResponse::success_with_message(
+        "Situation removed from pack successfully".to_string(),
+        (),
+    ))
 }
 
 #[utoipa::path(
@@ -807,7 +889,11 @@ pub async fn list_user_meme_packs(
         .into_iter()
         .map(|res| MemePackDetailsResponse {
             pack: MemePackDto::from(res.pack),
-            memes: res.memes.into_iter().map(PackMemeDetailsDto::from).collect(),
+            memes: res
+                .memes
+                .into_iter()
+                .map(PackMemeDetailsDto::from)
+                .collect(),
         })
         .collect();
 
@@ -835,10 +921,13 @@ pub async fn list_user_situation_packs(
         .into_iter()
         .map(|res| SituationPackDetailsResponse {
             pack: SituationPackDto::from(res.pack),
-            situations: res.situations.into_iter().map(PackSituationDto::from).collect(),
+            situations: res
+                .situations
+                .into_iter()
+                .map(PackSituationDto::from)
+                .collect(),
         })
         .collect();
 
     Ok(RestApiResponse::success(dtos))
 }
-

@@ -22,10 +22,7 @@ impl AuthAsGuestCommand {
     }
 
     pub async fn execute(&self) -> Result<AuthBody, AppError> {
-        let user_id = self
-            .repo
-            .create_user_with_auth(None, None)
-            .await?;
+        let user_id = self.repo.create_user_with_auth(None, None).await?;
 
         issue_tokens_with_family(&self.repo, user_id, Uuid::new_v4(), Role::User).await
     }

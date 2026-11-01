@@ -1,7 +1,4 @@
-use axum::{
-    routing::post,
-    Router,
-};
+use axum::{routing::post, Router};
 use utoipa::{
     openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme},
     OpenApi,
@@ -11,13 +8,8 @@ use crate::{
     common::app::state::AppState,
     features::media::{
         api::{
-            dto::{
-                request::UploadMediaRequestDto,
-                response::MediaAssetDto,
-            },
-            handlers::{
-                __path_upload_image_media, upload_image_media,
-            },
+            dto::{request::UploadMediaRequestDto, response::MediaAssetDto},
+            handlers::{__path_upload_image_media, upload_image_media},
         },
         MediaProvider,
     },
@@ -60,6 +52,5 @@ impl utoipa::Modify for MediaApiDoc {
 }
 
 pub fn media_routes() -> Router<AppState> {
-    Router::new()
-        .route("/upload/image", post(upload_image_media))
+    Router::new().route("/upload/image", post(upload_image_media))
 }

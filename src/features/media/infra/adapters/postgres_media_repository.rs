@@ -1,11 +1,13 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
+use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
     features::media::{
-        CreateMediaAsset, MediaAsset, MediaProvider, MediaRepository, MediaStatus, MediaVisibility, StoredFile,
+        CreateMediaAsset, MediaAsset, MediaProvider, MediaPurgeTask, MediaRepository, MediaStatus,
+        MediaVisibility, StoredFile,
     },
 };
 
@@ -49,7 +51,37 @@ impl TryFrom<MediaAssetRow> for MediaAsset {
             content_type: row.content_type,
             size_bytes: row.size_bytes,
             status: MediaStatus::try_from(row.status).map_err(AppError::ProviderError)?,
-            visibility: MediaVisibility::try_from(row.visibility).map_err(AppError::ProviderError)?,
+            visibility: MediaVisibility::try_from(row.visibility)
+                .map_err(AppError::ProviderError)?,
+            created_at: row.created_at,
+        })
+    }
+}
+
+#[derive(Debug, FromRow)]
+struct MediaPurgeTaskRow {
+    id: Uuid,
+    media_asset_id: i64,
+    provider: String,
+    provider_file_id: String,
+    retry_count: i32,
+    next_retry_at: DateTime<Utc>,
+    last_error: Option<String>,
+    created_at: DateTime<Utc>,
+}
+
+impl TryFrom<MediaPurgeTaskRow> for MediaPurgeTask {
+    type Error = AppError;
+
+    fn try_from(row: MediaPurgeTaskRow) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: row.id,
+            media_asset_id: row.media_asset_id,
+            provider: MediaProvider::try_from(row.provider).map_err(AppError::ProviderError)?,
+            provider_file_id: row.provider_file_id,
+            retry_count: row.retry_count,
+            next_retry_at: row.next_retry_at,
+            last_error: row.last_error,
             created_at: row.created_at,
         })
     }
@@ -266,5 +298,132 @@ impl MediaRepository for PostgresMediaRepository {
         }
 
         Ok(())
+    }
+
+    async fn delete_by_id(&self, id: i64) -> Result<bool, AppError> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM media_assets
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    async fn enqueue_purge_tasks_for_media_ids(&self, media_ids: &[i64]) -> Result<(), AppError> {
+        if media_ids.is_empty() {
+            return Ok(());
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO media_purge_tasks (media_asset_id, provider, provider_file_id)
+            SELECT id, provider, provider_file_id
+            FROM media_assets
+            WHERE id = ANY($1)
+            "#,
+        )
+        .bind(media_ids)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn fetch_pending_purge_tasks(&self, limit: i64) -> Result<Vec<MediaPurgeTask>, AppError> {
+        let rows = sqlx::query_as::<_, MediaPurgeTaskRow>(
+            r#"
+            SELECT id, media_asset_id, provider, provider_file_id, retry_count, next_retry_at, last_error, created_at
+            FROM media_purge_tasks
+            WHERE next_retry_at <= now() AND retry_count <= 5
+            ORDER BY next_retry_at ASC
+            LIMIT $1
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter().map(TryInto::try_into).collect()
+    }
+
+    async fn complete_purge_task(&self, task_id: Uuid) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            DELETE FROM media_purge_tasks
+            WHERE id = $1
+            "#,
+        )
+        .bind(task_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn fail_purge_task(
+        &self,
+        task_id: Uuid,
+        error: &str,
+        next_retry_at: DateTime<Utc>,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            UPDATE media_purge_tasks
+            SET retry_count = retry_count + 1,
+                last_error = $2,
+                next_retry_at = $3
+            WHERE id = $1
+            "#,
+        )
+        .bind(task_id)
+        .bind(error)
+        .bind(next_retry_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    async fn is_media_used_in_active_packs(&self, media_asset_id: i64) -> Result<bool, AppError> {
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM pack_memes pm
+                JOIN meme_packs mp ON mp.id = pm.pack_id
+                WHERE pm.media_id = $1
+                  AND pm.deleted_at IS NULL
+                  AND mp.deleted_at IS NULL
+            )
+            "#,
+        )
+        .bind(media_asset_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(exists)
+    }
+
+    async fn is_media_locked_in_games(&self, media_asset_id: i64) -> Result<bool, AppError> {
+        let locked = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM game_content_locks gcl
+                JOIN pack_memes pm ON pm.id = gcl.meme_id
+                WHERE pm.media_id = $1
+            )
+            "#,
+        )
+        .bind(media_asset_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(locked)
     }
 }

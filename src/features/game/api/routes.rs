@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post, delete, patch},
+    routing::{delete, get, patch, post},
     Router,
 };
 use utoipa::{
@@ -12,14 +12,14 @@ use crate::{
     common::app::state::AppState,
     features::game::{
         api::dto::{
-            CreateGameRequest, UpdateGameRequest, GameDto, GameStateDto, PlayerDto, ReadyRequest, RoundDto,
-            JoinGameRequest,
-            SubmitCardRequest, VoteRequest, CreateMemePackRequest, CreateMemePackResponse,
-            UpdateMemePackRequest, AddMemesToPackRequest, MemePackDto, PackMemeDetailsDto,
-            MemePackDetailsResponse, CreateSituationPackRequest, CreateSituationPackResponse,
-            UpdateSituationPackRequest, AddSituationsToPackRequest, SituationPackDto,
-            PackSituationDto, SituationPackDetailsResponse, WsTokenDto, ActiveGameDto, ActiveGamesResponseDto,
-            ActiveGameInfoDto, LobbiesWsTokenDto, RoundSubmissionDto,
+            ActiveGameDto, ActiveGameInfoDto, ActiveGamesResponseDto, AddMemesToPackRequest,
+            AddSituationsToPackRequest, CreateGameRequest, CreateMemePackRequest,
+            CreateMemePackResponse, CreateSituationPackRequest, CreateSituationPackResponse,
+            GameDto, GameStateDto, JoinGameRequest, LobbiesWsTokenDto, MemePackDetailsResponse,
+            MemePackDto, PackMemeDetailsDto, PackSituationDto, PlayerDto, ReadyRequest, RoundDto,
+            RoundSubmissionDto, SituationPackDetailsResponse, SituationPackDto, SubmitCardRequest,
+            UpdateGameRequest, UpdateMemePackRequest, UpdateSituationPackRequest, VoteRequest,
+            WsTokenDto,
         },
         domain::model::{GameCard, GameMode, GameStatus, RoundPhase},
     },
@@ -27,21 +27,52 @@ use crate::{
 
 pub fn game_routes() -> Router<AppState> {
     Router::new()
-        .route("/", post(handlers::create_game).get(handlers::list_active_games))
+        .route(
+            "/",
+            post(handlers::create_game).get(handlers::list_active_games),
+        )
         .route("/active", get(handlers::get_active_game))
         .route("/leave", post(handlers::leave_current_game))
         .route("/catalog/ws-token", get(handlers::get_lobbies_ws_token))
         .route("/{id}", patch(handlers::update_game))
-        .route("/packs/memes", post(handlers::create_meme_pack).get(handlers::list_meme_packs))
+        .route(
+            "/packs/memes",
+            post(handlers::create_meme_pack).get(handlers::list_meme_packs),
+        )
         .route("/packs/memes/me", get(handlers::list_user_meme_packs))
-        .route("/packs/memes/{id}", get(handlers::get_meme_pack).patch(handlers::update_meme_pack).delete(handlers::delete_meme_pack))
+        .route(
+            "/packs/memes/{id}",
+            get(handlers::get_meme_pack)
+                .patch(handlers::update_meme_pack)
+                .delete(handlers::delete_meme_pack),
+        )
         .route("/packs/memes/{id}/memes", post(handlers::add_memes_to_pack))
-        .route("/packs/memes/{id}/memes/{meme_id}", delete(handlers::delete_pack_meme))
-        .route("/packs/situations", post(handlers::create_situation_pack).get(handlers::list_situation_packs))
-        .route("/packs/situations/me", get(handlers::list_user_situation_packs))
-        .route("/packs/situations/{id}", get(handlers::get_situation_pack).patch(handlers::update_situation_pack).delete(handlers::delete_situation_pack))
-        .route("/packs/situations/{id}/situations", post(handlers::add_situations_to_pack))
-        .route("/packs/situations/{id}/situations/{situation_id}", delete(handlers::delete_pack_situation))
+        .route(
+            "/packs/memes/{id}/memes/{meme_id}",
+            delete(handlers::delete_pack_meme),
+        )
+        .route(
+            "/packs/situations",
+            post(handlers::create_situation_pack).get(handlers::list_situation_packs),
+        )
+        .route(
+            "/packs/situations/me",
+            get(handlers::list_user_situation_packs),
+        )
+        .route(
+            "/packs/situations/{id}",
+            get(handlers::get_situation_pack)
+                .patch(handlers::update_situation_pack)
+                .delete(handlers::delete_situation_pack),
+        )
+        .route(
+            "/packs/situations/{id}/situations",
+            post(handlers::add_situations_to_pack),
+        )
+        .route(
+            "/packs/situations/{id}/situations/{situation_id}",
+            delete(handlers::delete_pack_situation),
+        )
         .route("/{id}/state", get(handlers::get_game_state))
         .route("/events/{id}/ws-token", get(handlers::get_ws_token))
         .route("/{id}/join", post(handlers::join_game))
@@ -149,4 +180,3 @@ impl utoipa::Modify for GameApiDoc {
         )
     }
 }
-

@@ -73,13 +73,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             })
             .or_else(|| {
                 args.iter().find_map(|arg| {
-                    if let Some(stripped) = arg.strip_prefix("--seed-dir=") {
-                        Some(stripped.to_string())
-                    } else if let Some(stripped) = arg.strip_prefix("--dir=") {
-                        Some(stripped.to_string())
-                    } else {
-                        None
-                    }
+                    arg.strip_prefix("--seed-dir=")
+                        .or_else(|| arg.strip_prefix("--dir="))
+                        .map(|s| s.to_string())
                 })
             })
             .unwrap_or_else(|| "seeds".to_string());
@@ -110,7 +106,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .start(pool.clone(), shutdown_rx.clone());
 
     // Start game timer background worker
-    state.game.timer_worker.clone().start(shutdown_rx);
+    state.game.timer_worker.clone().start(shutdown_rx.clone());
+
+    // Start media cleanup background worker
+    state.media.cleanup_worker.clone().start(shutdown_rx);
 
     let app = create_router(state);
 

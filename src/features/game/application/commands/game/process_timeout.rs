@@ -1,14 +1,14 @@
-use std::sync::Arc;
-use uuid::Uuid;
 use chrono::Utc;
 use serde_json::json;
+use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::{
     common::http::error::AppError,
     features::game::{
         application::ports::game_notification_sender::GameNotificationSender,
         domain::{
-            model::{GameEvent, GameStatus, RoundPhase, GameRound},
+            model::{GameEvent, GameRound, GameStatus, RoundPhase},
             ports::GameRepository,
         },
     },
@@ -20,8 +20,14 @@ pub struct ProcessTimeoutCommand {
 }
 
 impl ProcessTimeoutCommand {
-    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
-        Self { repo, notification_sender }
+    pub fn new(
+        repo: Arc<dyn GameRepository>,
+        notification_sender: Arc<dyn GameNotificationSender>,
+    ) -> Self {
+        Self {
+            repo,
+            notification_sender,
+        }
     }
 
     #[allow(unused_assignments)]
@@ -29,13 +35,15 @@ impl ProcessTimeoutCommand {
         let mut tx = self.repo.begin().await?;
 
         // 1. Lock Round
-        let round = self.repo
+        let round = self
+            .repo
             .get_round_for_update(&mut tx, round_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Round not found: {}", round_id)))?;
 
         // 2. Lock Game
-        let game = self.repo
+        let game = self
+            .repo
             .find_game_for_update(&mut tx, round.game_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Game not found: {}", round.game_id)))?;
@@ -57,14 +65,20 @@ impl ProcessTimeoutCommand {
         match round.phase {
             RoundPhase::Submitting => {
                 // Determine who hasn't submitted yet
-                let submission_states = self.repo.get_players_with_submissions(game.id, Some(round_id)).await?;
+                let submission_states = self
+                    .repo
+                    .get_players_with_submissions(game.id, Some(round_id))
+                    .await?;
 
                 let mut new_version = game.version;
 
                 for state in submission_states {
                     if !state.has_submitted {
                         // Find first unused card in hand
-                        let unused_cards = self.repo.get_unused_hand_cards(&mut tx, game.id, state.user_id).await?;
+                        let unused_cards = self
+                            .repo
+                            .get_unused_hand_cards(&mut tx, game.id, state.user_id)
+                            .await?;
                         if let Some(hand_card) = unused_cards.first() {
                             let card_id = hand_card.meme_id.or(hand_card.situation_id).unwrap();
                             // Auto-submit the card
@@ -80,7 +94,8 @@ impl ProcessTimeoutCommand {
                             self.repo.mark_card_used(&mut tx, hand_card.id).await?;
 
                             // Notify Centrifugo & insert event
-                            new_version = self.repo.increment_game_version(&mut tx, game.id).await?;
+                            new_version =
+                                self.repo.increment_game_version(&mut tx, game.id).await?;
                             self.repo
                                 .insert_game_event(
                                     &mut tx,
@@ -96,14 +111,22 @@ impl ProcessTimeoutCommand {
                                 )
                                 .await?;
                             self.notification_sender
-                                .notify_submission_received(&mut tx, game.id, round_id, state.user_id, card_id, new_version)
+                                .notify_submission_received(
+                                    &mut tx,
+                                    game.id,
+                                    round_id,
+                                    state.user_id,
+                                    card_id,
+                                    new_version,
+                                )
                                 .await?;
                         }
                     }
                 }
 
                 // Transition to Voting phase
-                let expires_at = Utc::now() + chrono::Duration::seconds(game.vote_time_limit as i64);
+                let expires_at =
+                    Utc::now() + chrono::Duration::seconds(game.vote_time_limit as i64);
                 self.repo
                     .update_round_phase(&mut tx, round_id, RoundPhase::Voting, Some(expires_at))
                     .await?;
@@ -147,18 +170,17 @@ impl ProcessTimeoutCommand {
                 let is_last_round = game.current_round >= game.max_rounds;
 
                 let tally = self.repo.get_votes_by_submission(&mut tx, round_id).await?;
-                let winner_user_id = if let Some((winning_sub_id, _)) =
-                    tally.into_iter().max_by_key(|&(_, c)| c)
-                {
-                    let winning_sub = self
-                        .repo
-                        .get_submission_by_id(winning_sub_id)
-                        .await?
-                        .ok_or(AppError::InternalError)?;
-                    Some(winning_sub.user_id)
-                } else {
-                    None
-                };
+                let winner_user_id =
+                    if let Some((winning_sub_id, _)) = tally.into_iter().max_by_key(|&(_, c)| c) {
+                        let winning_sub = self
+                            .repo
+                            .get_submission_by_id(winning_sub_id)
+                            .await?
+                            .ok_or(AppError::InternalError)?;
+                        Some(winning_sub.user_id)
+                    } else {
+                        None
+                    };
 
                 // Update round read-model
                 self.repo
@@ -222,7 +244,8 @@ impl ProcessTimeoutCommand {
                         .update_game_current_round(&mut tx, game.id, next_current_round)
                         .await?;
 
-                    let expires_at = Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64);
+                    let expires_at =
+                        Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64);
                     self.repo
                         .activate_next_round(&mut tx, game.id, next_current_round, Some(expires_at))
                         .await?;
@@ -245,8 +268,13 @@ impl ProcessTimeoutCommand {
                         .await?;
 
                     match event {
-                        GameEvent::LobbyHostIdChanged { .. } => {},
-                        GameEvent::RoundFinished { round_id, winner_user_id, scores, round_scores } => {
+                        GameEvent::LobbyHostIdChanged { .. } => {}
+                        GameEvent::RoundFinished {
+                            round_id,
+                            winner_user_id,
+                            scores,
+                            round_scores,
+                        } => {
                             self.notification_sender
                                 .notify_round_finished(
                                     &mut tx,
@@ -261,9 +289,19 @@ impl ProcessTimeoutCommand {
                                 .await?;
 
                             for player in &players {
-                                let cards = self.repo.get_player_hand_with_media(&mut tx, game.id, player.user_id).await?;
+                                let cards = self
+                                    .repo
+                                    .get_player_hand_with_media(&mut tx, game.id, player.user_id)
+                                    .await?;
                                 self.notification_sender
-                                    .notify_hand_updated(&mut tx, game.id, player.user_id, *round_id, cards, slot)
+                                    .notify_hand_updated(
+                                        &mut tx,
+                                        game.id,
+                                        player.user_id,
+                                        *round_id,
+                                        cards,
+                                        slot,
+                                    )
                                     .await?;
                             }
 
@@ -286,7 +324,8 @@ impl ProcessTimeoutCommand {
                                 } else {
                                     "meme".to_string()
                                 };
-                                let prompt_id = next_round.prompt_situation_id
+                                let prompt_id = next_round
+                                    .prompt_situation_id
                                     .or(next_round.prompt_meme_id)
                                     .unwrap();
                                 let (prompt_media_id, prompt_text) = self
@@ -294,7 +333,13 @@ impl ProcessTimeoutCommand {
                                     .get_prompt_details(&mut tx, &prompt_kind, prompt_id)
                                     .await?;
 
-                                let next_expires_at = next_round.phase_expires_at.unwrap_or_else(|| Utc::now() + chrono::Duration::seconds(game.submit_time_limit as i64));
+                                let next_expires_at =
+                                    next_round.phase_expires_at.unwrap_or_else(|| {
+                                        Utc::now()
+                                            + chrono::Duration::seconds(
+                                                game.submit_time_limit as i64,
+                                            )
+                                    });
                                 self.notification_sender
                                     .notify_round_started(
                                         &mut tx,
@@ -311,14 +356,21 @@ impl ProcessTimeoutCommand {
                             }
                         }
                         GameEvent::GameFinished { final_scores } => {
-                            let updated_players = self.repo.get_players_tx(&mut tx, game.id).await?;
+                            let updated_players =
+                                self.repo.get_players_tx(&mut tx, game.id).await?;
                             let winner = updated_players
                                 .iter()
                                 .max_by_key(|p| p.score)
                                 .map(|p| p.user_id)
                                 .unwrap_or(Uuid::nil());
                             self.notification_sender
-                                .notify_game_finished(&mut tx, game.id, winner, final_scores.clone(), slot)
+                                .notify_game_finished(
+                                    &mut tx,
+                                    game.id,
+                                    winner,
+                                    final_scores.clone(),
+                                    slot,
+                                )
                                 .await?;
                         }
                         _ => {}
@@ -340,7 +392,11 @@ fn event_payload(event: &GameEvent) -> serde_json::Value {
         GameEvent::LobbyHostIdChanged { new_host_id } => json!({
             "new_host_id": new_host_id
         }),
-        GameEvent::VoteRegistered { round_id, voter_id, card_id } => json!({
+        GameEvent::VoteRegistered {
+            round_id,
+            voter_id,
+            card_id,
+        } => json!({
             "round_id": round_id,
             "voter_id": voter_id,
             "card_id": card_id,

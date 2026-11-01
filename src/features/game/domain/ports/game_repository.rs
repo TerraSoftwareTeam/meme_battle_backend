@@ -1,8 +1,7 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-
 
 use crate::{
     common::http::error::AppError,
@@ -24,7 +23,11 @@ pub trait GameRepository: Send + Sync {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
     ) -> Result<Vec<GamePlayer>, AppError>;
-    async fn get_player_hand(&self, game_id: Uuid, user_id: Uuid) -> Result<Vec<RawGameCard>, AppError>;
+    async fn get_player_hand(
+        &self,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<RawGameCard>, AppError>;
     async fn get_player_hand_with_media(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -41,8 +44,10 @@ pub trait GameRepository: Send + Sync {
     ) -> Result<Option<RawGameCard>, AppError>;
     async fn get_available_memes(&self, game_id: Uuid) -> Result<Vec<Uuid>, AppError>;
     async fn get_available_situations(&self, game_id: Uuid) -> Result<Vec<Uuid>, AppError>;
-    async fn get_submission_by_id(&self, submission_id: Uuid)
-        -> Result<Option<RoundSubmission>, AppError>;
+    async fn get_submission_by_id(
+        &self,
+        submission_id: Uuid,
+    ) -> Result<Option<RoundSubmission>, AppError>;
     async fn get_players_with_submissions(
         &self,
         game_id: Uuid,
@@ -164,7 +169,6 @@ pub trait GameRepository: Send + Sync {
         round_number: i32,
         phase_expires_at: Option<DateTime<Utc>>,
     ) -> Result<(), AppError>;
-
 
     async fn check_player_hand_card(
         &self,
@@ -303,8 +307,6 @@ pub trait GameRepository: Send + Sync {
         new_round: i32,
     ) -> Result<(), AppError>;
 
-
-
     async fn insert_meme_pack(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -337,9 +339,24 @@ pub trait GameRepository: Send + Sync {
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<(), AppError>;
-    async fn delete_meme_pack(&self, tx: &mut Transaction<'_, Postgres>, pack_id: Uuid) -> Result<(), AppError>;
+    async fn delete_meme_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+    ) -> Result<(), AppError>;
     async fn find_pack_meme_by_id(&self, meme_id: Uuid) -> Result<Option<PackMeme>, AppError>;
-    async fn delete_pack_meme(&self, tx: &mut Transaction<'_, Postgres>, meme_id: Uuid) -> Result<(), AppError>;
+    async fn delete_pack_meme(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        meme_id: Uuid,
+    ) -> Result<(), AppError>;
+    async fn get_pack_media_ids(&self, pack_id: Uuid) -> Result<Vec<i64>, AppError>;
+    async fn remove_pack_from_unstarted_lobbies(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+        is_meme: bool,
+    ) -> Result<Vec<Uuid>, AppError>;
 
     async fn insert_situation_pack(
         &self,
@@ -359,8 +376,12 @@ pub trait GameRepository: Send + Sync {
     ) -> Result<Uuid, AppError>;
     async fn find_situation_pack(&self, pack_id: Uuid) -> Result<Option<SituationPack>, AppError>;
     async fn list_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError>;
-    async fn list_user_situation_packs(&self, author_id: Uuid) -> Result<Vec<SituationPack>, AppError>;
-    async fn get_pack_situations_list(&self, pack_id: Uuid) -> Result<Vec<PackSituation>, AppError>;
+    async fn list_user_situation_packs(
+        &self,
+        author_id: Uuid,
+    ) -> Result<Vec<SituationPack>, AppError>;
+    async fn get_pack_situations_list(&self, pack_id: Uuid)
+        -> Result<Vec<PackSituation>, AppError>;
     async fn update_situation_pack(
         &self,
         tx: &mut Transaction<'_, Postgres>,
@@ -371,11 +392,20 @@ pub trait GameRepository: Send + Sync {
         safety_level: ContentSafetyLevel,
         is_public: bool,
     ) -> Result<(), AppError>;
-    async fn delete_situation_pack(&self, tx: &mut Transaction<'_, Postgres>, pack_id: Uuid) -> Result<(), AppError>;
-    async fn find_pack_situation_by_id(&self, situation_id: Uuid) -> Result<Option<PackSituation>, AppError>;
-    async fn delete_pack_situation(&self, tx: &mut Transaction<'_, Postgres>, situation_id: Uuid) -> Result<(), AppError>;
-
-
+    async fn delete_situation_pack(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        pack_id: Uuid,
+    ) -> Result<(), AppError>;
+    async fn find_pack_situation_by_id(
+        &self,
+        situation_id: Uuid,
+    ) -> Result<Option<PackSituation>, AppError>;
+    async fn delete_pack_situation(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        situation_id: Uuid,
+    ) -> Result<(), AppError>;
 
     async fn start_game(
         &self,
@@ -517,5 +547,3 @@ pub trait GameRepository: Send + Sync {
         user_id: Uuid,
     ) -> Result<(), AppError>;
 }
-
-

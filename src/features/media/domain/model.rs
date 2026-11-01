@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -97,4 +98,16 @@ pub struct StoredFile {
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct MediaPurgeTask {
+    pub id: Uuid,
+    pub media_asset_id: i64,
+    pub provider: MediaProvider,
+    pub provider_file_id: String,
+    pub retry_count: i32,
+    pub next_retry_at: DateTime<Utc>,
+    pub last_error: Option<String>,
+    pub created_at: DateTime<Utc>,
 }

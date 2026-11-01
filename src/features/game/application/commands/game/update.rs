@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use serde_json::json;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -44,10 +44,14 @@ impl UpdateGameCommand {
             Some(n) => {
                 let trimmed = n.trim().to_string();
                 if trimmed.is_empty() {
-                    return Err(AppError::ValidationError("Game name cannot be empty".to_string()));
+                    return Err(AppError::ValidationError(
+                        "Game name cannot be empty".to_string(),
+                    ));
                 }
                 if trimmed.chars().count() > 100 {
-                    return Err(AppError::ValidationError("Game name cannot exceed 100 characters".to_string()));
+                    return Err(AppError::ValidationError(
+                        "Game name cannot exceed 100 characters".to_string(),
+                    ));
                 }
                 Some(trimmed)
             }
@@ -58,7 +62,10 @@ impl UpdateGameCommand {
         if let Some(sit_pack_ids) = &selected_situation_pack_ids {
             for &pack_id in sit_pack_ids {
                 if self.repo.find_situation_pack(pack_id).await?.is_none() {
-                    return Err(AppError::NotFound(format!("Situation pack not found: {}", pack_id)));
+                    return Err(AppError::NotFound(format!(
+                        "Situation pack not found: {}",
+                        pack_id
+                    )));
                 }
             }
         }
@@ -67,7 +74,10 @@ impl UpdateGameCommand {
         if let Some(meme_pack_ids) = &selected_meme_pack_ids {
             for &pack_id in meme_pack_ids {
                 if self.repo.find_meme_pack(pack_id).await?.is_none() {
-                    return Err(AppError::NotFound(format!("Meme pack not found: {}", pack_id)));
+                    return Err(AppError::NotFound(format!(
+                        "Meme pack not found: {}",
+                        pack_id
+                    )));
                 }
             }
         }
@@ -75,17 +85,22 @@ impl UpdateGameCommand {
         let mut tx = self.repo.begin().await?;
 
         // 1. Lock game
-        let game = self.repo
+        let game = self
+            .repo
             .find_game_for_update(&mut tx, game_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Game not found: {}", game_id)))?;
 
         if game.host_id != user_id {
-            return Err(AppError::Forbidden("Only host can modify game settings".to_string()));
+            return Err(AppError::Forbidden(
+                "Only host can modify game settings".to_string(),
+            ));
         }
 
         if game.status != GameStatus::Lobby {
-            return Err(AppError::Conflict("Cannot update settings of a game that has started or finished".to_string()));
+            return Err(AppError::Conflict(
+                "Cannot update settings of a game that has started or finished".to_string(),
+            ));
         }
 
         // Apply setting updates
@@ -95,15 +110,29 @@ impl UpdateGameCommand {
 
         let effective_situation_pack_ids = match &selected_situation_pack_ids {
             Some(ids) => ids.clone(),
-            None => self.repo.get_selected_situation_pack_ids(&mut tx, game_id).await?,
+            None => {
+                self.repo
+                    .get_selected_situation_pack_ids(&mut tx, game_id)
+                    .await?
+            }
         };
         let effective_meme_pack_ids = match &selected_meme_pack_ids {
             Some(ids) => ids.clone(),
-            None => self.repo.get_selected_meme_pack_ids(&mut tx, game_id).await?,
+            None => {
+                self.repo
+                    .get_selected_meme_pack_ids(&mut tx, game_id)
+                    .await?
+            }
         };
 
-        let total_memes = self.repo.count_cards_in_meme_packs(&effective_meme_pack_ids).await?;
-        let total_situations = self.repo.count_cards_in_situation_packs(&effective_situation_pack_ids).await?;
+        let total_memes = self
+            .repo
+            .count_cards_in_meme_packs(&effective_meme_pack_ids)
+            .await?;
+        let total_situations = self
+            .repo
+            .count_cards_in_situation_packs(&effective_situation_pack_ids)
+            .await?;
 
         let new_max_players = Game::calculate_max_players(
             new_mode,
@@ -143,7 +172,9 @@ impl UpdateGameCommand {
 
         // Update selected situation packs if specified
         if let Some(sit_pack_ids) = selected_situation_pack_ids {
-            self.repo.clear_selected_situation_packs(&mut tx, game_id).await?;
+            self.repo
+                .clear_selected_situation_packs(&mut tx, game_id)
+                .await?;
             for pack_id in sit_pack_ids {
                 self.repo
                     .add_selected_situation_pack(&mut tx, game_id, pack_id)
@@ -153,7 +184,9 @@ impl UpdateGameCommand {
 
         // Update selected meme packs if specified
         if let Some(meme_pack_ids) = selected_meme_pack_ids {
-            self.repo.clear_selected_meme_packs(&mut tx, game_id).await?;
+            self.repo
+                .clear_selected_meme_packs(&mut tx, game_id)
+                .await?;
             for pack_id in meme_pack_ids {
                 self.repo
                     .add_selected_meme_pack(&mut tx, game_id, pack_id)
@@ -165,21 +198,32 @@ impl UpdateGameCommand {
         let new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
 
         // Publish event (only to event sourced table game_events)
-        self.repo.insert_game_event(
-            &mut tx,
-            Uuid::new_v4(),
-            game_id,
-            new_version,
-            "GameSettingsUpdated",
-            json!({
-                "name": trimmed_name,
-                "mode": new_mode,
-                "max_rounds": new_max_rounds,
-                "hand_size": new_hand_size,
-                "max_players": new_max_players
-            }),
-        )
-        .await?;
+        self.repo
+            .insert_game_event(
+                &mut tx,
+                Uuid::new_v4(),
+                game_id,
+                new_version,
+                "GameSettingsUpdated",
+                json!({
+                    "name": trimmed_name,
+                    "mode": new_mode,
+                    "max_rounds": new_max_rounds,
+                    "hand_size": new_hand_size,
+                    "max_players": new_max_players
+                }),
+            )
+            .await?;
+
+        self.notification_sender
+            .notify_lobby_packs_updated(
+                &mut tx,
+                game_id,
+                effective_meme_pack_ids,
+                effective_situation_pack_ids,
+                new_version,
+            )
+            .await?;
 
         self.notification_sender
             .notify_lobby_updated(&mut tx, game_id, current_players.len() as i32)
@@ -188,11 +232,12 @@ impl UpdateGameCommand {
         tx.commit().await?;
 
         // Reload the game to return it
-        let reloaded = self.repo
+        let reloaded = self
+            .repo
             .find_game(game_id)
             .await?
             .ok_or(AppError::InternalError)?;
-        
+
         Ok(reloaded)
     }
 }

@@ -11,8 +11,8 @@ tokio::task_local! {
 pub fn get_current_request_id() -> String {
     #[cfg(feature = "opentelemetry")]
     {
-        use tracing_opentelemetry::OpenTelemetrySpanExt;
         use opentelemetry::trace::TraceContextExt;
+        use tracing_opentelemetry::OpenTelemetrySpanExt;
         let context = tracing::Span::current().context();
         let span = context.span();
         let span_context = span.span_context();

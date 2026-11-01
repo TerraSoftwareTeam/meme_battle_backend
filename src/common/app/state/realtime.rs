@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use crate::features::realtime::OutboxProcessor;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct RealtimeState {
@@ -7,11 +7,7 @@ pub struct RealtimeState {
 }
 
 impl RealtimeState {
-    pub fn new(
-        processor: Arc<OutboxProcessor>,
-    ) -> Self {
-        Self {
-            processor,
-        }
+    pub fn new(processor: Arc<OutboxProcessor>) -> Self {
+        Self { processor }
     }
 }

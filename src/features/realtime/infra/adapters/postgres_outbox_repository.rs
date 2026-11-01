@@ -1,9 +1,9 @@
-use async_trait::async_trait;
-use sqlx::{Postgres, Transaction, PgPool};
-use uuid::Uuid;
-use chrono::{DateTime, Utc};
 use crate::common::http::error::AppError;
-use crate::features::realtime::domain::ports::outbox_repository::{OutboxRepository, OutboxEvent};
+use crate::features::realtime::domain::ports::outbox_repository::{OutboxEvent, OutboxRepository};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use sqlx::{PgPool, Postgres, Transaction};
+use uuid::Uuid;
 
 pub struct PostgresOutboxRepository {
     pool: PgPool,
@@ -59,7 +59,7 @@ impl OutboxRepository for PostgresOutboxRepository {
             ORDER BY o.created_at ASC 
             LIMIT 100
             FOR UPDATE SKIP LOCKED
-            "#
+            "#,
         )
         .fetch_all(&mut *tx)
         .await?;
@@ -71,7 +71,7 @@ impl OutboxRepository for PostgresOutboxRepository {
                 UPDATE realtime_outbox
                 SET next_retry_at = now() + INTERVAL '1 minute'
                 WHERE event_id = ANY($1)
-                "#
+                "#,
             )
             .bind(&ids)
             .execute(&mut *tx)
@@ -100,7 +100,7 @@ impl OutboxRepository for PostgresOutboxRepository {
             ORDER BY o.next_retry_at ASC, o.created_at ASC
             LIMIT 50
             FOR UPDATE SKIP LOCKED
-            "#
+            "#,
         )
         .fetch_all(&mut *tx)
         .await?;
@@ -112,7 +112,7 @@ impl OutboxRepository for PostgresOutboxRepository {
                 UPDATE realtime_outbox
                 SET next_retry_at = now() + INTERVAL '1 minute'
                 WHERE event_id = ANY($1)
-                "#
+                "#,
             )
             .bind(&ids)
             .execute(&mut *tx)
@@ -132,13 +132,18 @@ impl OutboxRepository for PostgresOutboxRepository {
         Ok(())
     }
 
-    async fn update_retry(&self, event_id: Uuid, retry_count: i32, next_retry_at: DateTime<Utc>) -> Result<(), AppError> {
+    async fn update_retry(
+        &self,
+        event_id: Uuid,
+        retry_count: i32,
+        next_retry_at: DateTime<Utc>,
+    ) -> Result<(), AppError> {
         sqlx::query(
             r#"
             UPDATE realtime_outbox
             SET retry_count = $1, next_retry_at = $2
             WHERE event_id = $3
-            "#
+            "#,
         )
         .bind(retry_count)
         .bind(next_retry_at)
@@ -161,12 +166,10 @@ impl OutboxRepository for PostgresOutboxRepository {
         let mut tx = self.pool.begin().await?;
 
         if !successes.is_empty() {
-            sqlx::query(
-                "DELETE FROM realtime_outbox WHERE event_id = ANY($1)"
-            )
-            .bind(successes)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query("DELETE FROM realtime_outbox WHERE event_id = ANY($1)")
+                .bind(successes)
+                .execute(&mut *tx)
+                .await?;
         }
 
         for &(event_id, retry_count, next_retry_at) in failures {
@@ -175,7 +178,7 @@ impl OutboxRepository for PostgresOutboxRepository {
                 UPDATE realtime_outbox
                 SET retry_count = $1, next_retry_at = $2
                 WHERE event_id = $3
-                "#
+                "#,
             )
             .bind(retry_count)
             .bind(next_retry_at)

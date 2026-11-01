@@ -5,12 +5,9 @@ use crate::{
         security::jwt::AuthBody,
     },
     features::auth::api::{
-        dto::request::{
-            AuthUserDto, RefreshSessionDto, RegisterAuthUserDto,
-        },
+        dto::request::{AuthUserDto, RefreshSessionDto, RegisterAuthUserDto},
         handlers::validation::{
-            validate_auth_user,
-            validate_refresh_session, validate_register_auth_user,
+            validate_auth_user, validate_refresh_session, validate_register_auth_user,
         },
     },
 };
@@ -57,9 +54,7 @@ pub async fn login_user(
     responses((status = 200, description = "Authenticate as guest", body = AuthBody)),
     tag = "UserAuth"
 )]
-pub async fn auth_as_guest(
-    State(state): State<AuthState>,
-) -> Result<impl IntoResponse, AppError> {
+pub async fn auth_as_guest(State(state): State<AuthState>) -> Result<impl IntoResponse, AppError> {
     let auth_body = state.auth_as_guest.execute().await?;
     Ok(RestApiResponse::success(auth_body))
 }

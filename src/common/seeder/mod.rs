@@ -1,11 +1,11 @@
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use sqlx::PgPool;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use serde::Deserialize;
-use sha2::{Digest, Sha256};
-use sqlx::PgPool;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -142,11 +142,17 @@ impl Seeder {
 
     /// Run full sync for all seeds found in seeds_dir
     pub async fn sync_all(&self, seeds_dir: &Path) -> Result<(), AppError> {
-        info!("Starting seeds synchronization from: {}", seeds_dir.display());
+        info!(
+            "Starting seeds synchronization from: {}",
+            seeds_dir.display()
+        );
         self.ensure_admin_user().await?;
 
         if !seeds_dir.exists() {
-            warn!("Seeds directory '{}' does not exist, skipping", seeds_dir.display());
+            warn!(
+                "Seeds directory '{}' does not exist, skipping",
+                seeds_dir.display()
+            );
             return Ok(());
         }
 
@@ -202,9 +208,9 @@ impl Seeder {
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "json") {
+                if path.is_file() && path.extension().is_some_and(|ext| ext == "json") {
                     results.push(path);
-                } else if path.is_dir() && path.file_name().map_or(true, |n| n != "assets") {
+                } else if path.is_dir() && path.file_name().is_none_or(|n| n != "assets") {
                     self.collect_json_files(&path, results);
                 }
             }
@@ -214,11 +220,13 @@ impl Seeder {
     /// Sync a single situation pack config
     pub async fn sync_situation_pack(&self, config_path: &Path) -> Result<(), AppError> {
         info!("Syncing situation pack config: {}", config_path.display());
-        let content = std::fs::read_to_string(config_path)
-            .map_err(|e| AppError::ProviderError(format!("Failed to read {}: {}", config_path.display(), e)))?;
+        let content = std::fs::read_to_string(config_path).map_err(|e| {
+            AppError::ProviderError(format!("Failed to read {}: {}", config_path.display(), e))
+        })?;
 
-        let config: SituationPackSeedConfig = serde_json::from_str(&content)
-            .map_err(|e| AppError::ValidationError(format!("Invalid JSON in {}: {}", config_path.display(), e)))?;
+        let config: SituationPackSeedConfig = serde_json::from_str(&content).map_err(|e| {
+            AppError::ValidationError(format!("Invalid JSON in {}: {}", config_path.display(), e))
+        })?;
 
         let pack_id = config.pack_id.unwrap_or_else(|| {
             // Deterministic UUID based on pack name if not specified
@@ -269,15 +277,17 @@ impl Seeder {
     /// Sync a single meme pack config
     pub async fn sync_meme_pack(&self, config_path: &Path) -> Result<(), AppError> {
         info!("Syncing meme pack config: {}", config_path.display());
-        let content = std::fs::read_to_string(config_path)
-            .map_err(|e| AppError::ProviderError(format!("Failed to read {}: {}", config_path.display(), e)))?;
+        let content = std::fs::read_to_string(config_path).map_err(|e| {
+            AppError::ProviderError(format!("Failed to read {}: {}", config_path.display(), e))
+        })?;
 
-        let config: MemePackSeedConfig = serde_json::from_str(&content)
-            .map_err(|e| AppError::ValidationError(format!("Invalid JSON in {}: {}", config_path.display(), e)))?;
+        let config: MemePackSeedConfig = serde_json::from_str(&content).map_err(|e| {
+            AppError::ValidationError(format!("Invalid JSON in {}: {}", config_path.display(), e))
+        })?;
 
-        let pack_id = config.pack_id.unwrap_or_else(|| {
-            Uuid::new_v5(&Uuid::NAMESPACE_DNS, config.name.as_bytes())
-        });
+        let pack_id = config
+            .pack_id
+            .unwrap_or_else(|| Uuid::new_v5(&Uuid::NAMESPACE_DNS, config.name.as_bytes()));
 
         // 1. Upsert pack header via GameRepository
         self.game_repository
@@ -332,8 +342,13 @@ impl Seeder {
                 )));
             }
 
-            let file_bytes = std::fs::read(&file_path)
-                .map_err(|e| AppError::ProviderError(format!("Failed to read asset {}: {}", file_path.display(), e)))?;
+            let file_bytes = std::fs::read(&file_path).map_err(|e| {
+                AppError::ProviderError(format!(
+                    "Failed to read asset {}: {}",
+                    file_path.display(),
+                    e
+                ))
+            })?;
 
             let hash = compute_file_hash(&file_bytes);
             if !desired_hashes.insert(hash.clone()) {
@@ -341,8 +356,10 @@ impl Seeder {
             }
 
             if let Some(existing) = existing_by_hash.get(&hash) {
-                if !existing.is_active {
-                    self.game_repository.reactivate_pack_meme(existing.id).await?;
+                if existing.deleted_at.is_some() {
+                    self.game_repository
+                        .reactivate_pack_meme(existing.id)
+                        .await?;
                     reactivated_count += 1;
                 } else {
                     unchanged_count += 1;
@@ -409,7 +426,10 @@ impl Seeder {
             StoredFile {
                 provider: MediaProvider::HackClubCdn,
                 provider_file_id: format!("seed_{}", uuid::Uuid::new_v4()),
-                url: format!("{}/local-seeds/{}/{}", self.config.hackclub_cdn_base_url, hash, filename),
+                url: format!(
+                    "{}/local-seeds/{}/{}",
+                    self.config.hackclub_cdn_base_url, hash, filename
+                ),
                 filename: filename.to_string(),
                 content_type: content_type.to_string(),
                 size_bytes: upload_file.bytes.len() as i64,
@@ -472,8 +492,14 @@ mod tests {
         let hash2 = compute_text_hash("   When code works on first try   ");
         let hash3 = compute_text_hash("When code fails");
 
-        assert_eq!(hash1, hash2, "Whitespace trimming should produce identical hashes");
-        assert_ne!(hash1, hash3, "Different texts must produce different hashes");
+        assert_eq!(
+            hash1, hash2,
+            "Whitespace trimming should produce identical hashes"
+        );
+        assert_ne!(
+            hash1, hash3,
+            "Different texts must produce different hashes"
+        );
         assert_eq!(hash1.len(), 64, "SHA-256 hex string must be 64 characters");
     }
 
@@ -512,7 +538,10 @@ mod tests {
         let parsed_detailed: SituationPackSeedConfig = serde_json::from_str(json_detailed).unwrap();
         assert_eq!(parsed_detailed.items.len(), 2);
         assert_eq!(parsed_detailed.items[0].prompt_text(), "Detailed item 1");
-        assert_eq!(parsed_detailed.safety_level, ContentSafetyLevel::FamilyFriendly);
+        assert_eq!(
+            parsed_detailed.safety_level,
+            ContentSafetyLevel::FamilyFriendly
+        );
         assert!(parsed_detailed.is_public);
 
         let json_simple = r#"{

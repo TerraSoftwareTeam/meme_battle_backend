@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::features::game::domain::model::{
-    GameMode, ContentSafetyLevel, LanguageCode,
-};
+use crate::features::game::domain::model::{ContentSafetyLevel, GameMode, LanguageCode};
 
 fn default_max_rounds() -> i32 {
     3
@@ -38,7 +36,11 @@ pub struct UpdateGameRequest {
     #[schema(example = "Новое название лобби")]
     pub name: Option<String>,
     pub mode: Option<GameMode>,
-    #[serde(default, rename = "selected_situation_pack_ids", alias = "situation_pack_ids")]
+    #[serde(
+        default,
+        rename = "selected_situation_pack_ids",
+        alias = "situation_pack_ids"
+    )]
     pub selected_situation_pack_ids: Option<Vec<Uuid>>,
     #[serde(default, rename = "selected_meme_pack_ids", alias = "meme_pack_ids")]
     pub selected_meme_pack_ids: Option<Vec<Uuid>>,

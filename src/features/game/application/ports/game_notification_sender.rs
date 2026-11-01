@@ -1,9 +1,8 @@
+use crate::common::http::error::AppError;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::{Postgres, Transaction};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
-use crate::common::http::error::AppError;
-
 
 #[async_trait]
 pub trait GameNotificationSender: Send + Sync {
@@ -152,5 +151,14 @@ pub trait GameNotificationSender: Send + Sync {
         &self,
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
+    ) -> Result<(), AppError>;
+
+    async fn notify_lobby_packs_updated(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        selected_meme_pack_ids: Vec<Uuid>,
+        selected_situation_pack_ids: Vec<Uuid>,
+        version: i64,
     ) -> Result<(), AppError>;
 }

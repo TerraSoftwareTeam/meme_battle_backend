@@ -194,13 +194,7 @@ mod tests {
     fn test_calculate_max_players_situation_to_meme() {
         // 50 memes, 10 situations, hand_size 5, max_rounds 5
         // cards_per_player = 5 + 5 = 10 -> max_players = 50 / 10 = 5
-        let max_players = Game::calculate_max_players(
-            GameMode::SituationToMeme,
-            50,
-            10,
-            5,
-            5,
-        );
+        let max_players = Game::calculate_max_players(GameMode::SituationToMeme, 50, 10, 5, 5);
         assert_eq!(max_players, 5);
     }
 
@@ -208,26 +202,14 @@ mod tests {
     fn test_calculate_max_players_meme_to_situation() {
         // 50 situations, 10 memes, hand_size 4, max_rounds 6
         // cards_per_player = 4 + 6 = 10 -> max_players = 50 / 10 = 5
-        let max_players = Game::calculate_max_players(
-            GameMode::MemeToSituation,
-            10,
-            50,
-            4,
-            6,
-        );
+        let max_players = Game::calculate_max_players(GameMode::MemeToSituation, 10, 50, 4, 6);
         assert_eq!(max_players, 5);
     }
 
     #[test]
     fn test_calculate_max_players_insufficient_prompts() {
         // Only 2 situations available for 5 rounds
-        let max_players = Game::calculate_max_players(
-            GameMode::SituationToMeme,
-            100,
-            2,
-            5,
-            5,
-        );
+        let max_players = Game::calculate_max_players(GameMode::SituationToMeme, 100, 2, 5, 5);
         assert_eq!(max_players, 0);
     }
 }

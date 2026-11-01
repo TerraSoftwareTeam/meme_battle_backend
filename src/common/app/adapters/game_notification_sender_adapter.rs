@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use async_trait::async_trait;
 use sqlx::{Postgres, Transaction};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -9,14 +9,15 @@ use crate::{
         game::GameNotificationSender,
         media::GetMediaAssetUrlQuery,
         realtime::{
-            PublishNotificationCommand,
             model::{
                 GameFinishedPayload, GameStartedPayload, HandCardDto, HandUpdatedPayload,
-                PlayerJoinedPayload, PlayerLeftPayload, PlayerReadyChangedPayload,
-                RoundFinishedPayload, RoundPhaseChangedPayload, RoundSubmissionItemPayload, RoundStartedPayload, ScoreItem,
-                SubmissionReceivedPayload, VoteReceivedPayload, RealtimePayload,
-                LobbyCreatedPayload, LobbyUpdatedPayload, LobbyRemovedPayload,
+                LobbyCreatedPayload, LobbyPacksUpdatedPayload, LobbyRemovedPayload,
+                LobbyUpdatedPayload, PlayerJoinedPayload, PlayerLeftPayload,
+                PlayerReadyChangedPayload, RealtimePayload, RoundFinishedPayload,
+                RoundPhaseChangedPayload, RoundStartedPayload, RoundSubmissionItemPayload,
+                ScoreItem, SubmissionReceivedPayload, VoteReceivedPayload,
             },
+            PublishNotificationCommand,
         },
     },
 };
@@ -50,8 +51,14 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
-        let payload = RealtimePayload::PlayerJoined(PlayerJoinedPayload { user_id, players_count, handle });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        let payload = RealtimePayload::PlayerJoined(PlayerJoinedPayload {
+            user_id,
+            players_count,
+            handle,
+        });
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_player_left(
@@ -63,8 +70,13 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
-        let payload = RealtimePayload::PlayerLeft(PlayerLeftPayload { user_id, players_count });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        let payload = RealtimePayload::PlayerLeft(PlayerLeftPayload {
+            user_id,
+            players_count,
+        });
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_lobby_host_changed(
@@ -76,11 +88,11 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
         let payload = RealtimePayload::LobbyHostIdChanged(
-            crate::features::realtime::domain::model::LobbyHostIdChangedPayload {
-                new_host_id,
-            }
+            crate::features::realtime::domain::model::LobbyHostIdChangedPayload { new_host_id },
         );
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_player_ready_changed(
@@ -92,8 +104,11 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         version: i64,
     ) -> Result<(), AppError> {
         let channel = format!("game:{}", game_id);
-        let payload = RealtimePayload::PlayerReadyChanged(PlayerReadyChangedPayload { user_id, is_ready });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        let payload =
+            RealtimePayload::PlayerReadyChanged(PlayerReadyChangedPayload { user_id, is_ready });
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_game_started(
@@ -110,12 +125,17 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             rounds_count,
             hand_size,
             current_round_number: 1,
-            players: players.into_iter().map(|p| crate::features::realtime::model::GamePlayerHandleInfo {
-                player_id: p.user_id,
-                handle: p.handle,
-            }).collect(),
+            players: players
+                .into_iter()
+                .map(|p| crate::features::realtime::model::GamePlayerHandleInfo {
+                    player_id: p.user_id,
+                    handle: p.handle,
+                })
+                .collect(),
         });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_round_started(
@@ -131,7 +151,10 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         version: i64,
     ) -> Result<(), AppError> {
         let prompt_content = if let Some(media_id) = prompt_media_id {
-            self.get_media_asset_url.execute(media_id).await?.unwrap_or_default()
+            self.get_media_asset_url
+                .execute(media_id)
+                .await?
+                .unwrap_or_default()
         } else {
             prompt_text.unwrap_or_default()
         };
@@ -144,7 +167,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             prompt_content,
             phase_expires_at,
         });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_hand_updated(
@@ -175,7 +200,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             round_id,
             cards: cards_dto,
         });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, Some(user_id)).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, Some(user_id))
+            .await
     }
 
     async fn notify_submission_received(
@@ -193,7 +220,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             user_id,
             card_id,
         });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_round_phase_changed(
@@ -234,7 +263,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             phase_expires_at,
             submissions: submissions_dto,
         });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_vote_received(
@@ -252,7 +283,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             voter_id,
             card_id,
         });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_round_finished(
@@ -288,7 +321,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             scoreboard: scoreboard_dto,
             round_scoreboard: round_scoreboard_dto,
         });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_game_finished(
@@ -311,7 +346,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             winner_user_id,
             final_scoreboard: scoreboard_dto,
         });
-        self.publish_usecase.execute(tx, game_id, &channel, version, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 
     async fn notify_lobby_created(
@@ -336,7 +373,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             players_count,
             created_at: created_at.to_rfc3339(),
         });
-        self.publish_usecase.execute(tx, game_id, "lobbies", 0, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, "lobbies", 0, payload, None)
+            .await
     }
 
     async fn notify_lobby_updated(
@@ -349,7 +388,9 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
             id: game_id,
             players_count,
         });
-        self.publish_usecase.execute(tx, game_id, "lobbies", 0, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, "lobbies", 0, payload, None)
+            .await
     }
 
     async fn notify_lobby_removed(
@@ -357,9 +398,27 @@ impl GameNotificationSender for GameNotificationSenderAdapter {
         tx: &mut Transaction<'_, Postgres>,
         game_id: Uuid,
     ) -> Result<(), AppError> {
-        let payload = RealtimePayload::LobbyRemoved(LobbyRemovedPayload {
-            id: game_id,
+        let payload = RealtimePayload::LobbyRemoved(LobbyRemovedPayload { id: game_id });
+        self.publish_usecase
+            .execute(tx, game_id, "lobbies", 0, payload, None)
+            .await
+    }
+
+    async fn notify_lobby_packs_updated(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        game_id: Uuid,
+        selected_meme_pack_ids: Vec<Uuid>,
+        selected_situation_pack_ids: Vec<Uuid>,
+        version: i64,
+    ) -> Result<(), AppError> {
+        let channel = format!("game:{}", game_id);
+        let payload = RealtimePayload::LobbyPacksUpdated(LobbyPacksUpdatedPayload {
+            selected_meme_pack_ids,
+            selected_situation_pack_ids,
         });
-        self.publish_usecase.execute(tx, game_id, "lobbies", 0, payload, None).await
+        self.publish_usecase
+            .execute(tx, game_id, &channel, version, payload, None)
+            .await
     }
 }

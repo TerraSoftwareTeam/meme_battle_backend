@@ -64,4 +64,3 @@ pub struct RoundSubmissionWithMedia {
     pub media_id: Option<i64>,
     pub text: Option<String>,
 }
-

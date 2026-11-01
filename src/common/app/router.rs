@@ -1,7 +1,7 @@
 use axum::{
     body::{Body, Bytes},
     error_handling::HandleErrorLayer,
-    extract::{Request, DefaultBodyLimit},
+    extract::{DefaultBodyLimit, Request},
     http::{
         header::{AUTHORIZATION, CONTENT_TYPE},
         Method, StatusCode,
@@ -14,10 +14,7 @@ use http_body_util::BodyExt;
 
 use std::time::Duration;
 use tower::ServiceBuilder;
-use tower_http::{
-    cors::CorsLayer,
-    trace::TraceLayer,
-};
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::{
     common::{
@@ -146,7 +143,9 @@ pub fn create_router(state: AppState) -> Router {
         .merge(api_routes)
         .fallback(fallback)
         .layer(middleware_stack)
-        .layer(DefaultBodyLimit::max((state.config.max_file_size_mb + 25) as usize * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(
+            (state.config.max_file_size_mb + 25) as usize * 1024 * 1024,
+        ))
         .with_state(state)
 }
 
@@ -184,9 +183,10 @@ async fn request_response_inspecter(
     }
 
     let (parts, body) = req.into_parts();
-    
+
     // Do not collect or inspect multipart or large binary bodies
-    let is_multipart = parts.headers
+    let is_multipart = parts
+        .headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|h| h.to_str().ok())
         .map(|s| s.starts_with("multipart/form-data"))

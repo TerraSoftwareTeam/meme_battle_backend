@@ -1,9 +1,9 @@
+use crate::common::http::error::AppError;
 use async_trait::async_trait;
-use sqlx::{Postgres, Transaction};
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use crate::common::http::error::AppError;
+use sqlx::{Postgres, Transaction};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct OutboxEvent {
@@ -28,7 +28,12 @@ pub trait OutboxRepository: Send + Sync {
     async fn fetch_and_lock_pending(&self) -> Result<Vec<OutboxEvent>, AppError>;
     async fn fetch_and_lock_retryable(&self) -> Result<Vec<OutboxEvent>, AppError>;
     async fn delete_event(&self, event_id: Uuid) -> Result<(), AppError>;
-    async fn update_retry(&self, event_id: Uuid, retry_count: i32, next_retry_at: DateTime<Utc>) -> Result<(), AppError>;
+    async fn update_retry(
+        &self,
+        event_id: Uuid,
+        retry_count: i32,
+        next_retry_at: DateTime<Utc>,
+    ) -> Result<(), AppError>;
     async fn update_processed_results(
         &self,
         successes: &[Uuid],

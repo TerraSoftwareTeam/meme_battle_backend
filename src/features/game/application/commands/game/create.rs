@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use serde_json::json;
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
@@ -42,28 +42,39 @@ impl CreateGameCommand {
     ) -> Result<Game, AppError> {
         let trimmed_name = name.trim().to_string();
         if trimmed_name.is_empty() {
-            return Err(AppError::ValidationError("Game name cannot be empty".to_string()));
+            return Err(AppError::ValidationError(
+                "Game name cannot be empty".to_string(),
+            ));
         }
         if trimmed_name.chars().count() > 100 {
-            return Err(AppError::ValidationError("Game name cannot exceed 100 characters".to_string()));
+            return Err(AppError::ValidationError(
+                "Game name cannot exceed 100 characters".to_string(),
+            ));
         }
 
         // Validate situation pack IDs exist
         for &pack_id in &situation_pack_ids {
             if self.repo.find_situation_pack(pack_id).await?.is_none() {
-                return Err(AppError::NotFound(format!("Situation pack not found: {}", pack_id)));
+                return Err(AppError::NotFound(format!(
+                    "Situation pack not found: {}",
+                    pack_id
+                )));
             }
         }
 
         // Validate meme pack IDs exist
         for &pack_id in &meme_pack_ids {
             if self.repo.find_meme_pack(pack_id).await?.is_none() {
-                return Err(AppError::NotFound(format!("Meme pack not found: {}", pack_id)));
+                return Err(AppError::NotFound(format!(
+                    "Meme pack not found: {}",
+                    pack_id
+                )));
             }
         }
 
         // Validate creator is not already in an active game
-        if let Some((active_game_id, _)) = self.repo.find_active_game_for_player(creator_id).await? {
+        if let Some((active_game_id, _)) = self.repo.find_active_game_for_player(creator_id).await?
+        {
             return Err(AppError::Conflict(format!(
                 "You are already in an active game ({}). Leave it before creating a new one.",
                 active_game_id
@@ -71,16 +82,14 @@ impl CreateGameCommand {
         }
 
         let total_memes = self.repo.count_cards_in_meme_packs(&meme_pack_ids).await?;
-        let total_situations = self.repo.count_cards_in_situation_packs(&situation_pack_ids).await?;
+        let total_situations = self
+            .repo
+            .count_cards_in_situation_packs(&situation_pack_ids)
+            .await?;
 
         // 2. Compute max players using domain logic
-        let max_players = Game::calculate_max_players(
-            mode,
-            total_memes,
-            total_situations,
-            hand_size,
-            max_rounds,
-        );
+        let max_players =
+            Game::calculate_max_players(mode, total_memes, total_situations, hand_size, max_rounds);
 
         if max_players < 2 {
             return Err(AppError::ValidationError(
@@ -91,7 +100,18 @@ impl CreateGameCommand {
         let mut tx = self.repo.begin().await?;
 
         // 1. Create Game
-        let game = self.repo.create_game(&mut tx, creator_id, trimmed_name, mode, max_rounds, hand_size, max_players).await?;
+        let game = self
+            .repo
+            .create_game(
+                &mut tx,
+                creator_id,
+                trimmed_name,
+                mode,
+                max_rounds,
+                hand_size,
+                max_players,
+            )
+            .await?;
 
         // 2. Select Packs
         for pack_id in situation_pack_ids {
@@ -108,29 +128,27 @@ impl CreateGameCommand {
         // 3. Add Host as Player (default ready since they are starting)
         let username = self.repo.get_user_username(creator_id).await?;
         let user_nickname = username.unwrap_or_else(|| format!("player-{}", creator_id));
-        let host_handle = super::resolve_handle(
-            creator_id,
-            requested_handle,
-            user_nickname,
-            &[],
-        )?;
-        self.repo.add_player(&mut tx, game.id, creator_id, true, host_handle).await?;
+        let host_handle = super::resolve_handle(creator_id, requested_handle, user_nickname, &[])?;
+        self.repo
+            .add_player(&mut tx, game.id, creator_id, true, host_handle)
+            .await?;
 
         // 4. Insert GameCreated event in event store
-        self.repo.insert_game_event(
-            &mut tx,
-            Uuid::new_v4(),
-            game.id,
-            game.version,
-            "GameCreated",
-            json!({
-                "host_id": creator_id,
-                "name": game.name,
-                "mode": game.mode,
-                "max_players": max_players
-            }),
-        )
-        .await?;
+        self.repo
+            .insert_game_event(
+                &mut tx,
+                Uuid::new_v4(),
+                game.id,
+                game.version,
+                "GameCreated",
+                json!({
+                    "host_id": creator_id,
+                    "name": game.name,
+                    "mode": game.mode,
+                    "max_players": max_players
+                }),
+            )
+            .await?;
 
         let mode_str = match game.mode {
             GameMode::SituationToMeme => "situation_to_meme".to_string(),
@@ -138,7 +156,17 @@ impl CreateGameCommand {
         };
 
         self.notification_sender
-            .notify_lobby_created(&mut tx, game.id, creator_id, game.name.clone(), mode_str, max_rounds, hand_size, 1, game.created_at)
+            .notify_lobby_created(
+                &mut tx,
+                game.id,
+                creator_id,
+                game.name.clone(),
+                mode_str,
+                max_rounds,
+                hand_size,
+                1,
+                game.created_at,
+            )
             .await?;
 
         tx.commit().await?;

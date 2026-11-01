@@ -5,14 +5,14 @@ use super::config::Config;
 
 pub mod auth;
 pub mod media;
-pub mod user;
 pub mod realtime;
+pub mod user;
 
+pub use crate::features::game::GameState;
 pub use auth::AuthState;
 pub use media::MediaState;
-pub use user::UserState;
 pub use realtime::RealtimeState;
-pub use crate::features::game::GameState;
+pub use user::UserState;
 
 #[derive(Clone)]
 pub struct AppState {

@@ -4,18 +4,11 @@ use crate::{
         http::{current_user::CurrentUser, dto::RestApiResponse, error::AppError},
     },
     features::user::api::{
-        dto::{
-            request::UpdateMeDto,
-            response::UserDto,
-        },
+        dto::{request::UpdateMeDto, response::UserDto},
         handlers::validation::validate_update_me,
     },
 };
-use axum::{
-    extract::State,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, response::IntoResponse, Json};
 
 #[utoipa::path(
     get,
@@ -66,7 +59,6 @@ pub async fn get_user_by_id(
     let user = state.get_user_by_id.execute(id).await?;
     Ok(RestApiResponse::success(UserDto::from(user)))
 }
-
 
 #[utoipa::path(
     post,

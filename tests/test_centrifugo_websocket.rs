@@ -84,10 +84,11 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
         tokens.push(token);
     }
 
-    let user_id1: Uuid = sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let user_id1: Uuid =
+        sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
     let mut media_ids = Vec::new();
     for id in 8101..=8120 {
@@ -124,7 +125,17 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
         .unwrap();
     assert_eq!(create_meme_resp.status(), StatusCode::OK);
     let meme_pack_resp: RestApiResponse<Value> = create_meme_resp.json().await.unwrap();
-    let meme_pack_id = Uuid::parse_str(meme_pack_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+    let meme_pack_id = Uuid::parse_str(
+        meme_pack_resp
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     let create_sit_resp = client
         .post(format!("{}/games/packs/situations", base_url))
@@ -148,7 +159,17 @@ async fn test_centrifugo_websocket_connection_and_broadcast() {
         .unwrap();
     assert_eq!(create_sit_resp.status(), StatusCode::OK);
     let sit_pack_resp: RestApiResponse<Value> = create_sit_resp.json().await.unwrap();
-    let sit_pack_id = Uuid::parse_str(sit_pack_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+    let sit_pack_id = Uuid::parse_str(
+        sit_pack_resp
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     // 6. Create Game with first player
     let create_game_payload = json!({
@@ -371,10 +392,11 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
         .unwrap()
         .to_string();
 
-    let user_id1: Uuid = sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let user_id1: Uuid =
+        sqlx::query_scalar("SELECT id FROM users ORDER BY created_at DESC LIMIT 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
 
     let mut media_ids = Vec::new();
     for id in 8201..=8220 {
@@ -411,7 +433,17 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
         .unwrap();
     assert_eq!(create_meme_resp.status(), StatusCode::OK);
     let meme_pack_resp: RestApiResponse<Value> = create_meme_resp.json().await.unwrap();
-    let meme_pack_id = Uuid::parse_str(meme_pack_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+    let meme_pack_id = Uuid::parse_str(
+        meme_pack_resp
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     let create_sit_resp = client
         .post(format!("{}/games/packs/situations", base_url))
@@ -435,7 +467,17 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
         .unwrap();
     assert_eq!(create_sit_resp.status(), StatusCode::OK);
     let sit_pack_resp: RestApiResponse<Value> = create_sit_resp.json().await.unwrap();
-    let sit_pack_id = Uuid::parse_str(sit_pack_resp.0.data.unwrap().get("id").unwrap().as_str().unwrap()).unwrap();
+    let sit_pack_id = Uuid::parse_str(
+        sit_pack_resp
+            .0
+            .data
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
 
     // Create a game with Player 1 (Player 2 is NOT joined yet)
     let create_game_payload = json!({
@@ -487,7 +529,10 @@ async fn test_ws_token_endpoint_auth_and_permissions() {
     // Test Case C: Get WS token for non-existent game -> should fail with 404 Not Found
     let random_game_id = Uuid::new_v4();
     let resp_not_found = client
-        .get(format!("{}/games/events/{}/ws-token", base_url, random_game_id))
+        .get(format!(
+            "{}/games/events/{}/ws-token",
+            base_url, random_game_id
+        ))
         .bearer_auth(&token1)
         .send()
         .await
@@ -824,7 +869,9 @@ async fn test_lobbies_realtime_websocket_updates() {
                                 if event_type.as_str() == Some("lobby_created") {
                                     let payload = data.get("payload").unwrap();
                                     // Skip events from other concurrent tests
-                                    if payload.get("id").and_then(|v| v.as_str()) != Some(game_id.to_string().as_str()) {
+                                    if payload.get("id").and_then(|v| v.as_str())
+                                        != Some(game_id.to_string().as_str())
+                                    {
                                         continue;
                                     }
                                     assert_eq!(
@@ -849,7 +896,6 @@ async fn test_lobbies_realtime_websocket_updates() {
         received_created,
         "Did not receive lobby_created event via WebSocket"
     );
-
 
     // 11. Player 2 joins the game (Trigger lobby_updated to 2)
     let join_resp2 = client
@@ -883,7 +929,9 @@ async fn test_lobbies_realtime_websocket_updates() {
                                 if event_type.as_str() == Some("lobby_updated") {
                                     let payload = data.get("payload").unwrap();
                                     // Skip events from other concurrent tests
-                                    if payload.get("id").and_then(|v| v.as_str()) != Some(game_id.to_string().as_str()) {
+                                    if payload.get("id").and_then(|v| v.as_str())
+                                        != Some(game_id.to_string().as_str())
+                                    {
                                         continue;
                                     }
                                     let count =
@@ -972,7 +1020,9 @@ async fn test_lobbies_realtime_websocket_updates() {
                                 if event_type.as_str() == Some("lobby_removed") {
                                     let payload = data.get("payload").unwrap();
                                     // Skip events from other concurrent tests
-                                    if payload.get("id").and_then(|v| v.as_str()) != Some(game_id.to_string().as_str()) {
+                                    if payload.get("id").and_then(|v| v.as_str())
+                                        != Some(game_id.to_string().as_str())
+                                    {
                                         continue;
                                     }
                                     received_removed = true;
@@ -1057,5 +1107,4 @@ async fn test_large_media_upload_limit() {
     // Verify it is not rejected by Axum body limit layer (which would return 413 Payload Too Large)
     let status = upload_resp.status();
     assert_ne!(status, StatusCode::PAYLOAD_TOO_LARGE);
-
 }

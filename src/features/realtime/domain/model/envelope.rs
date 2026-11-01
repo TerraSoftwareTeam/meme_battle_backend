@@ -22,6 +22,7 @@ pub enum RealtimeEventType {
     LobbyCreated,
     LobbyUpdated,
     LobbyRemoved,
+    LobbyPacksUpdated,
     GameInvited,
     MatchmakingFound,
     HandUpdated,
@@ -209,6 +210,12 @@ pub struct LobbyHostIdChangedPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LobbyPacksUpdatedPayload {
+    pub selected_meme_pack_ids: Vec<Uuid>,
+    pub selected_situation_pack_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RealtimePayload {
     PlayerJoined(PlayerJoinedPayload),
@@ -229,6 +236,7 @@ pub enum RealtimePayload {
     LobbyCreated(LobbyCreatedPayload),
     LobbyUpdated(LobbyUpdatedPayload),
     LobbyRemoved(LobbyRemovedPayload),
+    LobbyPacksUpdated(LobbyPacksUpdatedPayload),
 }
 
 impl RealtimePayload {
@@ -252,16 +260,13 @@ impl RealtimePayload {
             RealtimePayload::LobbyCreated(_) => RealtimeEventType::LobbyCreated,
             RealtimePayload::LobbyUpdated(_) => RealtimeEventType::LobbyUpdated,
             RealtimePayload::LobbyRemoved(_) => RealtimeEventType::LobbyRemoved,
+            RealtimePayload::LobbyPacksUpdated(_) => RealtimeEventType::LobbyPacksUpdated,
         }
     }
 }
 
 impl RealtimeEnvelope {
-    pub fn all(
-        game_id: Uuid,
-        version: i64,
-        payload: RealtimePayload,
-    ) -> Self {
+    pub fn all(game_id: Uuid, version: i64, payload: RealtimePayload) -> Self {
         let event_type = payload.event_type();
         Self {
             event_id: Uuid::new_v4(),
@@ -274,12 +279,7 @@ impl RealtimeEnvelope {
         }
     }
 
-    pub fn personal(
-        game_id: Uuid,
-        user_id: Uuid,
-        version: i64,
-        payload: RealtimePayload,
-    ) -> Self {
+    pub fn personal(game_id: Uuid, user_id: Uuid, version: i64, payload: RealtimePayload) -> Self {
         let event_type = payload.event_type();
         Self {
             event_id: Uuid::new_v4(),

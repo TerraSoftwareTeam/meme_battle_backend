@@ -291,10 +291,7 @@ async fn submit_card_for_player(
     card_id: Uuid,
 ) {
     let resp = client
-        .post(format!(
-            "{}/games/{}/submit",
-            base_url, game_id
-        ))
+        .post(format!("{}/games/{}/submit", base_url, game_id))
         .bearer_auth(token)
         .json(&SubmitCardRequest { card_id })
         .send()
@@ -333,10 +330,7 @@ async fn vote_for_other_player(
     let submission_id: Uuid = target.get("id");
 
     let resp = client
-        .post(format!(
-            "{}/games/{}/vote",
-            base_url, game_id
-        ))
+        .post(format!("{}/games/{}/vote", base_url, game_id))
         .bearer_auth(token)
         .json(&VoteRequest { submission_id })
         .send()
@@ -355,8 +349,7 @@ async fn vote_for_other_player(
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn mock_cdn_router() -> axum::Router {
-    axum::Router::new()
-        .route("/api/v4/upload", axum::routing::post(handle_mock_upload))
+    axum::Router::new().route("/api/v4/upload", axum::routing::post(handle_mock_upload))
 }
 
 async fn handle_mock_upload(_bytes: axum::body::Bytes) -> axum::Json<serde_json::Value> {
@@ -404,7 +397,11 @@ async fn test_real_game_centrifugo_gameplay_flow() {
 
     // Start outbox processor
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let processor_handle = state.realtime.processor.clone().start(pool.clone(), shutdown_rx);
+    let processor_handle = state
+        .realtime
+        .processor
+        .clone()
+        .start(pool.clone(), shutdown_rx);
 
     let client = reqwest::Client::new();
     let base_url = format!("http://{}", app_addr);
@@ -432,10 +429,13 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             .unwrap()
             .to_string();
 
-        let claims: Claims =
-            decode::<Claims>(&token, &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret), &jsonwebtoken::Validation::default())
-                .unwrap()
-                .claims;
+        let claims: Claims = decode::<Claims>(
+            &token,
+            &jsonwebtoken::DecodingKey::from_secret(&KEYS.jwt_secret),
+            &jsonwebtoken::Validation::default(),
+        )
+        .unwrap()
+        .claims;
         user_ids.push(Uuid::parse_str(&claims.sub).unwrap());
         tokens.push(token);
     }
@@ -591,7 +591,8 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             *user_id,
             idx * 10 + 1,
         )
-        .await {
+        .await
+        {
             Some(c) => c,
             None => return,
         };
@@ -773,10 +774,7 @@ async fn test_real_game_centrifugo_gameplay_flow() {
 
     // Try to submit an invalid card (not in hand) -> should fail with BAD_REQUEST (400)
     let invalid_card_resp = client
-        .post(format!(
-            "{}/games/{}/submit",
-            base_url, game_id
-        ))
+        .post(format!("{}/games/{}/submit", base_url, game_id))
         .bearer_auth(&tokens[0])
         .json(&SubmitCardRequest {
             card_id: Uuid::new_v4(),
@@ -863,16 +861,16 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             assert!(sub.get("id").is_some(), "submission id missing");
             assert!(sub.get("user_id").is_some(), "submission user_id missing");
             assert_eq!(sub.get("kind").unwrap().as_str(), Some("meme"));
-            assert!(sub.get("image_url").is_some(), "submission image_url missing");
+            assert!(
+                sub.get("image_url").is_some(),
+                "submission image_url missing"
+            );
         }
     }
 
     // Try to submit another card in the voting phase -> should fail with CONFLICT (409)
     let late_submit_resp = client
-        .post(format!(
-            "{}/games/{}/submit",
-            base_url, game_id
-        ))
+        .post(format!("{}/games/{}/submit", base_url, game_id))
         .bearer_auth(&tokens[0])
         .json(&SubmitCardRequest {
             card_id: player_hands_r1[0][1],
@@ -900,10 +898,7 @@ async fn test_real_game_centrifugo_gameplay_flow() {
     let own_submission_id: Uuid = own_submission.get("id");
 
     let own_vote_resp = client
-        .post(format!(
-            "{}/games/{}/vote",
-            base_url, game_id
-        ))
+        .post(format!("{}/games/{}/vote", base_url, game_id))
         .bearer_auth(&tokens[0])
         .json(&VoteRequest {
             submission_id: own_submission_id,
@@ -924,10 +919,7 @@ async fn test_real_game_centrifugo_gameplay_flow() {
     let other_submission_id: Uuid = other_submission.get("id");
 
     let vote_resp = client
-        .post(format!(
-            "{}/games/{}/vote",
-            base_url, game_id
-        ))
+        .post(format!("{}/games/{}/vote", base_url, game_id))
         .bearer_auth(&tokens[0])
         .json(&VoteRequest {
             submission_id: other_submission_id,
@@ -939,10 +931,7 @@ async fn test_real_game_centrifugo_gameplay_flow() {
 
     // Try to vote twice -> should fail with CONFLICT (409)
     let double_vote_resp = client
-        .post(format!(
-            "{}/games/{}/vote",
-            base_url, game_id
-        ))
+        .post(format!("{}/games/{}/vote", base_url, game_id))
         .bearer_auth(&tokens[0])
         .json(&VoteRequest {
             submission_id: other_submission_id,
@@ -1033,7 +1022,11 @@ async fn test_real_game_centrifugo_gameplay_flow() {
             "Total score in round 1 scoreboard should be 1 point awarded to the winner immediately"
         );
         assert!(
-            payload.get("round_scoreboard").unwrap().as_array().is_some(),
+            payload
+                .get("round_scoreboard")
+                .unwrap()
+                .as_array()
+                .is_some(),
             "Missing round_scoreboard"
         );
     }
@@ -1189,10 +1182,16 @@ async fn test_real_game_centrifugo_gameplay_flow() {
         let data = push_data(&event).unwrap();
         let payload = data.get("payload").unwrap();
         assert_eq!(payload.get("round_number").unwrap().as_i64(), Some(2));
-        assert!(payload.get("winner_user_id").is_some(), "Missing winner_user_id in round 2 round_finished");
+        assert!(
+            payload.get("winner_user_id").is_some(),
+            "Missing winner_user_id in round 2 round_finished"
+        );
 
         // Cumulative scoreboard after 2 rounds must total 2 points (1 per round)
-        let scoreboard = payload.get("scoreboard").unwrap().as_array()
+        let scoreboard = payload
+            .get("scoreboard")
+            .unwrap()
+            .as_array()
             .expect("scoreboard must be an array in round_finished");
         assert_eq!(scoreboard.len(), 3, "Scoreboard must contain all 3 players");
         let total_score: i64 = scoreboard
@@ -1205,12 +1204,14 @@ async fn test_real_game_centrifugo_gameplay_flow() {
         );
 
         assert!(
-            payload.get("round_scoreboard").unwrap().as_array().is_some(),
+            payload
+                .get("round_scoreboard")
+                .unwrap()
+                .as_array()
+                .is_some(),
             "Missing round_scoreboard"
         );
     }
-
-
 
     // ── 23. Verify game_finished event on game channel ────────────────────────
 

@@ -5,10 +5,7 @@ use crate::{
     common::http::error::AppError,
     features::game::{
         application::ports::game_notification_sender::GameNotificationSender,
-        domain::{
-            model::GameStatus,
-            ports::GameRepository,
-        },
+        domain::{model::GameStatus, ports::GameRepository},
     },
 };
 
@@ -20,21 +17,35 @@ pub struct JoinGameCommand {
 }
 
 impl JoinGameCommand {
-    pub fn new(repo: Arc<dyn GameRepository>, notification_sender: Arc<dyn GameNotificationSender>) -> Self {
-        Self { repo, notification_sender }
+    pub fn new(
+        repo: Arc<dyn GameRepository>,
+        notification_sender: Arc<dyn GameNotificationSender>,
+    ) -> Self {
+        Self {
+            repo,
+            notification_sender,
+        }
     }
 
-    pub async fn execute(&self, user_id: Uuid, game_id: Uuid, requested_handle: Option<String>) -> Result<(), AppError> {
+    pub async fn execute(
+        &self,
+        user_id: Uuid,
+        game_id: Uuid,
+        requested_handle: Option<String>,
+    ) -> Result<(), AppError> {
         let mut tx = self.repo.begin().await?;
 
         // Row lock game
-        let game = self.repo
+        let game = self
+            .repo
             .find_game_for_update(&mut tx, game_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!("Game not found: {}", game_id)))?;
 
         if game.status != GameStatus::Lobby {
-            return Err(AppError::Conflict("Cannot join active or finished game".to_string()));
+            return Err(AppError::Conflict(
+                "Cannot join active or finished game".to_string(),
+            ));
         }
 
         // Check if player is already in another active game
@@ -58,15 +69,12 @@ impl JoinGameCommand {
         let user_nickname = username.unwrap_or_else(|| format!("player-{}", user_id));
 
         // Resolve handle using resolution rules and checking against existing lobby players
-        let resolved_handle = resolve_handle(
-            user_id,
-            requested_handle,
-            user_nickname,
-            &players,
-        )?;
+        let resolved_handle = resolve_handle(user_id, requested_handle, user_nickname, &players)?;
 
         // Add player (ready by default upon joining)
-        self.repo.add_player(&mut tx, game_id, user_id, true, resolved_handle.clone()).await?;
+        self.repo
+            .add_player(&mut tx, game_id, user_id, true, resolved_handle.clone())
+            .await?;
 
         // Increment version
         let new_version = self.repo.increment_game_version(&mut tx, game_id).await?;
@@ -90,7 +98,14 @@ impl JoinGameCommand {
             .await?;
 
         self.notification_sender
-            .notify_player_joined(&mut tx, game_id, user_id, resolved_handle.clone(), players_count, new_version)
+            .notify_player_joined(
+                &mut tx,
+                game_id,
+                user_id,
+                resolved_handle.clone(),
+                players_count,
+                new_version,
+            )
             .await?;
 
         self.notification_sender
@@ -101,5 +116,3 @@ impl JoinGameCommand {
         Ok(())
     }
 }
-
-
